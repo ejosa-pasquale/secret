@@ -228,17 +228,20 @@ def inject_css() -> None:
         }}
         .market-hero > * {{ position:relative; z-index:2; }}
         .market-content {{
-            width:min(880px, 100%);
-            background: linear-gradient(135deg, rgba(5,7,10,.92), rgba(12,18,28,.82));
-            border: 1px solid rgba(216,180,95,.24);
-            border-radius: 24px;
-            padding: clamp(1.05rem, 2.5vw, 1.65rem);
-            box-shadow: 0 24px 70px rgba(0,0,0,.42);
-            backdrop-filter: blur(12px);
+            width:min(920px, 100%);
+            background:
+                linear-gradient(135deg, rgba(5,7,10,.96), rgba(8,13,20,.90)),
+                radial-gradient(circle at 12% 0%, rgba(216,180,95,.14), transparent 34%);
+            border: 1px solid rgba(216,180,95,.38);
+            border-radius: 28px;
+            padding: clamp(1.15rem, 2.6vw, 1.95rem);
+            box-shadow: 0 30px 90px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.05);
+            backdrop-filter: blur(16px);
         }}
-        .market-eyebrow {{ color:#f4d98f; text-transform:uppercase; letter-spacing:.14em; font-size:.76rem; font-weight:950; text-shadow:0 2px 12px rgba(0,0,0,.8); }}
-        .market-title {{ color:#fff; font-size: clamp(2.05rem, 4.4vw, 4.2rem); line-height:1; font-weight:950; letter-spacing:-.055em; margin:.45rem 0 .75rem; max-width:820px; text-shadow: 0 6px 30px rgba(0,0,0,.72); }}
-        .market-sub {{ color:rgba(247,245,239,.94); font-size:1.06rem; line-height:1.62; max-width:760px; text-shadow:0 3px 20px rgba(0,0,0,.85); }}
+        .market-eyebrow {{ color:#f4d98f; text-transform:uppercase; letter-spacing:.18em; font-size:.78rem; font-weight:950; text-shadow:0 2px 12px rgba(0,0,0,.8); }}
+        .market-title {{ color:#fff; font-size: clamp(2.25rem, 4.7vw, 4.65rem); line-height:.96; font-weight:950; letter-spacing:-.065em; margin:.48rem 0 .85rem; max-width:860px; text-shadow: 0 8px 34px rgba(0,0,0,.78); }}
+        .market-sub {{ color:rgba(247,245,239,.95); font-size:1.08rem; line-height:1.62; max-width:760px; text-shadow:0 3px 20px rgba(0,0,0,.85); }}
+        .market-line {{ display:inline-block; margin-top:.8rem; padding:.72rem .95rem; color:#fff7d9; font-weight:850; letter-spacing:-.01em; background:rgba(216,180,95,.12); border:1px solid rgba(216,180,95,.32); border-radius:999px; box-shadow: inset 0 1px 0 rgba(255,255,255,.05); }}
         .market-quick {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; margin-top:1.25rem; }}
         .quick-card {{ background:rgba(0,0,0,.72); border:1px solid rgba(216,180,95,.35); border-radius:18px; padding:1rem; backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }}
         .quick-card b {{ display:block; color:#fff; font-size:1.25rem; }}
@@ -267,8 +270,9 @@ def inject_css() -> None:
         .market-img:after {{ background:linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.88)); }}
         @media(max-width: 560px) {{
             .market-quick {{ grid-template-columns:1fr; gap:.65rem; }}
-            .market-title {{ font-size:2.05rem; line-height:1.05; letter-spacing:-.04em; }}
+            .market-title {{ font-size:2.12rem; line-height:1; letter-spacing:-.045em; }}
             .market-sub {{ font-size:.98rem; line-height:1.52; }}
+            .market-line {{ border-radius:16px; font-size:.92rem; line-height:1.35; }}
             .market-hero {{ border-radius:20px; padding:1rem; min-height:560px; align-items:flex-end; background-position:64% center; }}
             .market-content {{ border-radius:18px; padding:1rem; background:rgba(3,5,7,.91); }}
             .quick-card {{ padding:.85rem; }}
@@ -699,9 +703,10 @@ def marketplace_page(user: sqlite3.Row) -> None:
         f"""
         <div class='market-hero'>
             <div class='market-content'>
-                <div class='market-eyebrow'>Private access · Same day tables · Fine dining</div>
-                <div class='market-title'>Marketplace premium per tavoli stellati last-minute</div>
-                <div class='market-sub'>Scegli location, numero di ospiti e budget. Il nome del ristorante resta riservato fino al primo click di prenotazione; da quel momento hai 60 secondi per confermare.</div>
+                <div class='market-eyebrow'>SECRET TABLES · SAME-DAY · FINE DINING</div>
+                <div class='market-title'>Tonight’s most exclusive tables, quietly unlocked.</div>
+                <div class='market-sub'>Esperienze stellate disponibili oggi. Accesso riservato, conferma immediata, ristorante secret fino al primo click.</div>
+                <div class='market-line'>Hai 60 secondi per trasformare una disponibilità rara nel tuo tavolo di stasera.</div>
                 <div class='market-quick'>
                     <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
                     <div class='quick-card'><b>{cities_count}</b><span>Location attive</span></div>
