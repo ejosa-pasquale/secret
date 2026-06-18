@@ -193,14 +193,54 @@ def inject_css() -> None:
         }}
 
         /* Marketplace premium and interactive business case */
-        .market-hero {{ border-radius: 28px; padding: clamp(1.4rem, 3vw, 2.6rem); background: linear-gradient(135deg, rgba(216,180,95,.18), rgba(36,165,106,.12) 42%, rgba(8,10,15,.92)), url('{candle}'); background-size: cover; background-position: center; border: 1px solid rgba(216,180,95,.28); box-shadow: 0 32px 90px rgba(0,0,0,.45); margin-bottom: 1.3rem; overflow:hidden; position:relative; }}
-        .market-hero:after {{ content:""; position:absolute; inset:0; background: radial-gradient(circle at 75% 10%, rgba(216,180,95,.17), transparent 32%); pointer-events:none; }}
-        .market-hero > * {{ position:relative; z-index:1; }}
-        .market-eyebrow {{ color:#f4d98f; text-transform:uppercase; letter-spacing:.12em; font-size:.78rem; font-weight:900; }}
-        .market-title {{ color:#fff; font-size: clamp(2rem, 4vw, 4rem); line-height:.96; font-weight:900; letter-spacing:-.055em; margin:.35rem 0 .6rem; max-width:840px; }}
-        .market-sub {{ color:rgba(247,245,239,.82); font-size:1.06rem; max-width:780px; }}
-        .market-quick {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; margin-top:1.3rem; }}
-        .quick-card {{ background:rgba(5,6,8,.56); border:1px solid rgba(216,180,95,.22); border-radius:18px; padding:1rem; backdrop-filter: blur(10px); }}
+        .market-hero {{
+            border-radius: 30px;
+            padding: clamp(1.2rem, 3vw, 2.7rem);
+            background:
+                linear-gradient(90deg, rgba(3,5,7,.98) 0%, rgba(3,5,7,.94) 38%, rgba(3,5,7,.70) 63%, rgba(3,5,7,.48) 100%),
+                linear-gradient(180deg, rgba(0,0,0,.50), rgba(0,0,0,.72)),
+                url('{candle}');
+            background-size: cover;
+            background-position: center right;
+            border: 1px solid rgba(216,180,95,.32);
+            box-shadow: 0 34px 100px rgba(0,0,0,.58);
+            margin-bottom: 1.3rem;
+            overflow:hidden;
+            position:relative;
+            min-height: 430px;
+            display:flex;
+            align-items:flex-end;
+        }}
+        .market-hero:before {{
+            content:"";
+            position:absolute;
+            inset:0;
+            background: radial-gradient(circle at 86% 20%, rgba(216,180,95,.18), transparent 28%);
+            pointer-events:none;
+        }}
+        .market-hero:after {{
+            content:"";
+            position:absolute;
+            left:0; top:0; bottom:0;
+            width:58%;
+            background: linear-gradient(90deg, rgba(0,0,0,.72), rgba(0,0,0,.18), transparent);
+            pointer-events:none;
+        }}
+        .market-hero > * {{ position:relative; z-index:2; }}
+        .market-content {{
+            width:min(880px, 100%);
+            background: linear-gradient(135deg, rgba(5,7,10,.92), rgba(12,18,28,.82));
+            border: 1px solid rgba(216,180,95,.24);
+            border-radius: 24px;
+            padding: clamp(1.05rem, 2.5vw, 1.65rem);
+            box-shadow: 0 24px 70px rgba(0,0,0,.42);
+            backdrop-filter: blur(12px);
+        }}
+        .market-eyebrow {{ color:#f4d98f; text-transform:uppercase; letter-spacing:.14em; font-size:.76rem; font-weight:950; text-shadow:0 2px 12px rgba(0,0,0,.8); }}
+        .market-title {{ color:#fff; font-size: clamp(2.05rem, 4.4vw, 4.2rem); line-height:1; font-weight:950; letter-spacing:-.055em; margin:.45rem 0 .75rem; max-width:820px; text-shadow: 0 6px 30px rgba(0,0,0,.72); }}
+        .market-sub {{ color:rgba(247,245,239,.94); font-size:1.06rem; line-height:1.62; max-width:760px; text-shadow:0 3px 20px rgba(0,0,0,.85); }}
+        .market-quick {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; margin-top:1.25rem; }}
+        .quick-card {{ background:rgba(0,0,0,.72); border:1px solid rgba(216,180,95,.35); border-radius:18px; padding:1rem; backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }}
         .quick-card b {{ display:block; color:#fff; font-size:1.25rem; }}
         .quick-card span {{ color:rgba(247,245,239,.66); font-size:.86rem; }}
         .market-card {{ display:grid; grid-template-columns: 42% 58%; min-height: 300px; border-radius: 24px; overflow:hidden; background:linear-gradient(180deg, rgba(21,27,42,.98), rgba(8,10,15,.98)); border:1px solid rgba(216,180,95,.22); box-shadow: 0 26px 70px rgba(0,0,0,.42); margin-bottom:1.1rem; }}
@@ -225,7 +265,18 @@ def inject_css() -> None:
         .reveal-title {{ color:#f4d98f; font-weight:950; font-size:1.25rem; margin-bottom:.25rem; }}
         .warning-box {{ background: rgba(180,50,50,.16); border:1px solid rgba(255,120,120,.28); border-radius:16px; padding:1rem; color:#ffecec; margin:.8rem 0; }}
         .market-img:after {{ background:linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.88)); }}
-        @media(max-width: 560px) {{ .market-quick {{ grid-template-columns:1fr; }} .market-title {{ font-size:2.05rem; }} .market-hero {{ border-radius:20px; padding:1.2rem; }} .market-card {{ border-radius:18px; }} .market-body {{ padding:1rem; }} .market-name {{ font-size:1.2rem; }} .market-price {{ font-size:1.28rem; }} }}
+        @media(max-width: 560px) {{
+            .market-quick {{ grid-template-columns:1fr; gap:.65rem; }}
+            .market-title {{ font-size:2.05rem; line-height:1.05; letter-spacing:-.04em; }}
+            .market-sub {{ font-size:.98rem; line-height:1.52; }}
+            .market-hero {{ border-radius:20px; padding:1rem; min-height:560px; align-items:flex-end; background-position:64% center; }}
+            .market-content {{ border-radius:18px; padding:1rem; background:rgba(3,5,7,.91); }}
+            .quick-card {{ padding:.85rem; }}
+            .market-card {{ border-radius:18px; }}
+            .market-body {{ padding:1rem; }}
+            .market-name {{ font-size:1.2rem; }}
+            .market-price {{ font-size:1.28rem; }}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -647,14 +698,16 @@ def marketplace_page(user: sqlite3.Row) -> None:
     st.markdown(
         f"""
         <div class='market-hero'>
-            <div class='market-eyebrow'>Private access · Same day tables · Fine dining</div>
-            <div class='market-title'>Marketplace premium per tavoli stellati last-minute</div>
-            <div class='market-sub'>Scegli location, numero di ospiti e budget. Il nome del ristorante resta riservato fino al primo click di prenotazione; da quel momento hai 60 secondi per confermare.</div>
-            <div class='market-quick'>
-                <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
-                <div class='quick-card'><b>{cities_count}</b><span>Location attive</span></div>
-                <div class='quick-card'><b>{eur(avg_price)}</b><span>Prezzo medio per persona</span></div>
-                <div class='quick-card'><b>{html.escape(str(next_date))}</b><span>Prima disponibilità</span></div>
+            <div class='market-content'>
+                <div class='market-eyebrow'>Private access · Same day tables · Fine dining</div>
+                <div class='market-title'>Marketplace premium per tavoli stellati last-minute</div>
+                <div class='market-sub'>Scegli location, numero di ospiti e budget. Il nome del ristorante resta riservato fino al primo click di prenotazione; da quel momento hai 60 secondi per confermare.</div>
+                <div class='market-quick'>
+                    <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
+                    <div class='quick-card'><b>{cities_count}</b><span>Location attive</span></div>
+                    <div class='quick-card'><b>{eur(avg_price)}</b><span>Prezzo medio per persona</span></div>
+                    <div class='quick-card'><b>{html.escape(str(next_date))}</b><span>Prima disponibilità</span></div>
+                </div>
             </div>
         </div>
         """,
