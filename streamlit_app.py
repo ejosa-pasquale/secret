@@ -191,6 +191,37 @@ def inject_css() -> None:
             .secret-img {{ height: 200px; }}
             .app-table th, .app-table td {{ padding: .7rem; font-size: .86rem; }}
         }}
+
+        /* Marketplace premium and interactive business case */
+        .market-hero {{ border-radius: 28px; padding: clamp(1.4rem, 3vw, 2.6rem); background: linear-gradient(135deg, rgba(216,180,95,.18), rgba(36,165,106,.12) 42%, rgba(8,10,15,.92)), url('{candle}'); background-size: cover; background-position: center; border: 1px solid rgba(216,180,95,.28); box-shadow: 0 32px 90px rgba(0,0,0,.45); margin-bottom: 1.3rem; overflow:hidden; position:relative; }}
+        .market-hero:after {{ content:""; position:absolute; inset:0; background: radial-gradient(circle at 75% 10%, rgba(216,180,95,.17), transparent 32%); pointer-events:none; }}
+        .market-hero > * {{ position:relative; z-index:1; }}
+        .market-eyebrow {{ color:#f4d98f; text-transform:uppercase; letter-spacing:.12em; font-size:.78rem; font-weight:900; }}
+        .market-title {{ color:#fff; font-size: clamp(2rem, 4vw, 4rem); line-height:.96; font-weight:900; letter-spacing:-.055em; margin:.35rem 0 .6rem; max-width:840px; }}
+        .market-sub {{ color:rgba(247,245,239,.82); font-size:1.06rem; max-width:780px; }}
+        .market-quick {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; margin-top:1.3rem; }}
+        .quick-card {{ background:rgba(5,6,8,.56); border:1px solid rgba(216,180,95,.22); border-radius:18px; padding:1rem; backdrop-filter: blur(10px); }}
+        .quick-card b {{ display:block; color:#fff; font-size:1.25rem; }}
+        .quick-card span {{ color:rgba(247,245,239,.66); font-size:.86rem; }}
+        .market-card {{ display:grid; grid-template-columns: 42% 58%; min-height: 300px; border-radius: 24px; overflow:hidden; background:linear-gradient(180deg, rgba(21,27,42,.98), rgba(8,10,15,.98)); border:1px solid rgba(216,180,95,.22); box-shadow: 0 26px 70px rgba(0,0,0,.42); margin-bottom:1.1rem; }}
+        .market-img {{ min-height:300px; background-size:cover; background-position:center; position:relative; }}
+        .market-img:after {{ content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.76)); }}
+        .market-img-label {{ position:absolute; left:1rem; right:1rem; bottom:1rem; z-index:1; display:flex; flex-wrap:wrap; gap:.45rem; }}
+        .market-body {{ padding:1.35rem; display:flex; flex-direction:column; justify-content:space-between; }}
+        .market-row {{ display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }}
+        .market-name {{ color:#fff; font-size:1.45rem; font-weight:900; letter-spacing:-.025em; margin:.55rem 0 .2rem; }}
+        .market-meta {{ color:rgba(247,245,239,.68); font-weight:600; }}
+        .market-price {{ color:#f4d98f; font-size:1.55rem; font-weight:950; }}
+        .market-list {{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:.5rem; margin:.9rem 0; }}
+        .market-list div {{ background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.075); border-radius:12px; padding:.65rem .75rem; color:rgba(247,245,239,.82); }}
+        .progress-shell {{ width:100%; height:12px; background:rgba(255,255,255,.08); border-radius:99px; overflow:hidden; border:1px solid rgba(216,180,95,.12); }}
+        .progress-fill {{ height:100%; background:linear-gradient(90deg, #24a56a, #d8b45f); border-radius:99px; }}
+        .calc-hero {{ border-radius:24px; padding:1.5rem; background:linear-gradient(135deg, rgba(36,165,106,.16), rgba(216,180,95,.10)); border:1px solid rgba(216,180,95,.22); margin:1rem 0; }}
+        .calc-result {{ border-radius:22px; padding:1.2rem; background:linear-gradient(180deg, rgba(216,180,95,.13), rgba(36,165,106,.10)); border:1px solid rgba(216,180,95,.25); }}
+        .big-number {{ color:#f4d98f; font-size:clamp(2rem,4vw,4.6rem); line-height:1; font-weight:950; letter-spacing:-.055em; }}
+        .sensitivity-grid {{ display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:1rem; }}
+        @media(max-width: 900px) {{ .market-quick {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} .market-card {{ grid-template-columns:1fr; }} .market-img {{ min-height:230px; }} .market-list {{ grid-template-columns:1fr; }} .sensitivity-grid {{ grid-template-columns:1fr; }} }}
+        @media(max-width: 560px) {{ .market-quick {{ grid-template-columns:1fr; }} .market-title {{ font-size:2.05rem; }} .market-hero {{ border-radius:20px; padding:1.2rem; }} .market-card {{ border-radius:18px; }} .market-body {{ padding:1rem; }} .market-name {{ font-size:1.2rem; }} .market-price {{ font-size:1.28rem; }} }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -492,6 +523,21 @@ def bar_svg(labels: list[str], values: list[int], title: str) -> str:
     return f"<div class='svg-wrap'><svg viewBox='0 0 {width} {height}' width='100%'><text x='40' y='34' font-size='18' font-weight='800' fill='{PRIMARY}'>{html.escape(title)}</text>{''.join(bars)}</svg></div>"
 
 
+
+def eur(value: float, compact: bool = False) -> str:
+    value = float(value or 0)
+    if compact:
+        abs_v = abs(value)
+        if abs_v >= 1_000_000:
+            return (f"€{value/1_000_000:.2f}M").replace('.', ',')
+        if abs_v >= 1_000:
+            return (f"€{value/1_000:.0f}k").replace('.', ',')
+    return "€" + f"{value:,.0f}".replace(',', '.')
+
+
+def int_it(value: float) -> str:
+    return f"{int(round(value)):,.0f}".replace(',', '.')
+
 def dashboard_page() -> None:
     bookings = fetchone("SELECT COUNT(*) c, COALESCE(SUM(gross_value),0) gbv, COALESCE(SUM(platform_fee),0) fees FROM bookings")
     avail = fetchone("SELECT COUNT(*) c FROM availabilities WHERE status='available'")
@@ -544,21 +590,49 @@ def dashboard_page() -> None:
 
 
 def marketplace_page(user: sqlite3.Row) -> None:
-    st.markdown("## Marketplace last-minute")
-    st.markdown("Scegli taste, location ed esperienza. Il ristorante resta **Secret** fino alla prenotazione confermata.")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        city = st.selectbox("Location", ["Tutte", "Milano", "Como", "Bergamo", "Brescia"])
-    with col2:
-        seats = st.selectbox("Persone", ["Tutte", "2", "4"])
-    with col3:
-        taste = st.text_input("Ricerca taste", "")
+    today = date.today()
+    total_available = fetchone("SELECT COUNT(*) c FROM availabilities WHERE status='available' AND service_date>=?", (str(today),))["c"]
+    avg_price = fetchone("SELECT COALESCE(AVG(price_per_person),0) v FROM availabilities WHERE status='available' AND service_date>=?", (str(today),))["v"]
+    cities_count = fetchone("""
+        SELECT COUNT(DISTINCT r.city) c
+        FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id
+        WHERE a.status='available' AND a.service_date>=?
+    """, (str(today),))["c"]
+    next_date = fetchone("SELECT MIN(service_date) d FROM availabilities WHERE status='available' AND service_date>=?", (str(today),))["d"] or str(today)
+    st.markdown(
+        f"""
+        <div class='market-hero'>
+            <div class='market-eyebrow'>Private access · Same day tables · Fine dining</div>
+            <div class='market-title'>Marketplace premium per tavoli stellati last-minute</div>
+            <div class='market-sub'>Filtra per location, persone, budget e taste. L'identità del ristorante resta riservata fino alla conferma, preservando esclusività e posizionamento.</div>
+            <div class='market-quick'>
+                <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
+                <div class='quick-card'><b>{cities_count}</b><span>Location attive</span></div>
+                <div class='quick-card'><b>{eur(avg_price)}</b><span>Prezzo medio per persona</span></div>
+                <div class='quick-card'><b>{html.escape(str(next_date))}</b><span>Prima disponibilità</span></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container():
+        f1, f2, f3, f4 = st.columns([1, 1, 1, 1.2])
+        with f1:
+            city = st.selectbox("Location", ["Tutte", "Milano", "Como", "Bergamo", "Brescia"])
+        with f2:
+            seats = st.selectbox("Persone", ["Tutte", "2", "4"])
+        with f3:
+            max_price = st.slider("Budget max pp", 90, 300, 180, 5)
+        with f4:
+            taste = st.text_input("Taste o area", placeholder="es. vegetale, Brera, wine")
+
     sql = """
     SELECT a.*, r.name, r.city, r.area, r.stars, r.taste, r.avg_rating
     FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id
-    WHERE a.status='available' AND a.service_date>=?
+    WHERE a.status='available' AND a.service_date>=? AND a.price_per_person<=?
     """
-    params: list[Any] = [str(date.today())]
+    params: list[Any] = [str(today), int(max_price)]
     if city != "Tutte":
         sql += " AND r.city=?"
         params.append(city)
@@ -566,47 +640,74 @@ def marketplace_page(user: sqlite3.Row) -> None:
         sql += " AND a.seats=?"
         params.append(int(seats))
     if taste.strip():
-        sql += " AND lower(r.taste) LIKE ?"
-        params.append(f"%{taste.lower()}%")
-    sql += " ORDER BY a.service_date, a.price_per_person LIMIT 24"
+        sql += " AND (lower(r.taste) LIKE ? OR lower(r.area) LIKE ? OR lower(a.menu_title) LIKE ?)"
+        q = f"%{taste.lower()}%"
+        params.extend([q, q, q])
+    sql += " ORDER BY a.service_date, a.price_per_person, r.stars DESC LIMIT 24"
     rows = fetchall(sql, params)
+
+    st.markdown("### Esperienze selezionate")
     if not rows:
-        st.info("Nessun tavolo disponibile con questi filtri.")
+        st.info("Nessun tavolo disponibile con questi filtri. Prova ad ampliare budget, location o numero di persone.")
         return
-    cards = st.columns(3)
+
     for idx, a in enumerate(rows):
-        with cards[idx % 3]:
-            st.markdown(
-                f"""
-                <div class='secret-card'>
-                    <div class='secret-img' style="background-image:url('{restaurant_image_uri(a['restaurant_id'])}')"></div>
-                    <div class='card-body-dark'>
-                        <span class='badge badge-navy'>Secret Restaurant #{a['restaurant_id']}</span>
+        restaurant_code = f"SSR-{int(a['restaurant_id']):03d}"
+        discount_label = "Accesso riservato"
+        scarcity = max(18, 92 - idx * 7)
+        img = restaurant_image_uri(a['restaurant_id'])
+        gross = a["seats"] * a["price_per_person"]
+        st.markdown(
+            f"""
+            <div class='market-card'>
+                <div class='market-img' style="background-image:url('{img}')">
+                    <div class='market-img-label'>
+                        <span class='badge badge-navy'>Secret fino alla conferma</span>
                         <span class='badge badge-green'>{a['stars']}★ Michelin</span>
-                        <div class='restaurant-name'>Taste {html.escape(a['taste'])}</div>
-                        <p class='small-muted'>{html.escape(a['city'])} · {html.escape(a['area'])} · {a['service_date']} · {a['service_time']}</p>
-                        <p>{html.escape(a['menu_title'])}<br><b style='color:#f4d98f'>€{a['price_per_person']} pp</b> · {a['seats']} persone · rating {a['avg_rating']}</p>
                     </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            if st.button("Prenota tavolo", key=f"book_{a['id']}", type="primary", use_container_width=True):
+                <div class='market-body'>
+                    <div>
+                        <div class='market-row'>
+                            <span class='badge badge-blue'>{html.escape(a['city'])} · {html.escape(a['area'])}</span>
+                            <span class='market-price'>€{a['price_per_person']} pp</span>
+                        </div>
+                        <div class='market-name'>{restaurant_code} · Taste {html.escape(a['taste'])}</div>
+                        <div class='market-meta'>{html.escape(a['service_date'])} · {html.escape(a['service_time'])} · {a['seats']} persone · rating {a['avg_rating']} · GBV {eur(gross)}</div>
+                        <div class='market-list'>
+                            <div>🍽️ {html.escape(a['menu_title'])}</div>
+                            <div>✨ {html.escape(discount_label)}</div>
+                            <div>📍 Location premium selezionata</div>
+                            <div>🔒 Nome ristorante visibile dopo prenotazione</div>
+                        </div>
+                        <div class='progress-shell'><div class='progress-fill' style='width:{scarcity}%'></div></div>
+                        <p class='small-muted' style='margin-top:.55rem'>Domanda qualificata stimata: {scarcity}% · disponibilità pubblicata entro le 10:00</p>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        b1, b2, b3 = st.columns([1.2, 1, 1])
+        with b1:
+            st.caption(f"Esperienza: {a['experience']}")
+        with b2:
+            st.caption(f"Fee piattaforma: €{a['restaurant_fee']} · Totale tavolo: {eur(gross)}")
+        with b3:
+            if st.button("Prenota esperienza", key=f"book_{a['id']}", type="primary", use_container_width=True):
                 if user["membership_status"] != "premium":
                     st.error("Serve una membership premium attiva per prenotare.")
                 else:
-                    gross = a["seats"] * a["price_per_person"]
                     try:
                         execute("UPDATE availabilities SET status='booked' WHERE id=? AND status='available'", (a["id"],))
                         execute(
                             "INSERT INTO bookings(availability_id,user_id,guest_name,guests,gross_value,platform_fee) VALUES(?,?,?,?,?,?)",
                             (a["id"], user["id"], user["name"], a["seats"], gross, a["restaurant_fee"]),
                         )
-                        st.success("Prenotazione confermata. Ora il ristorante è visibile nella sezione Prenotazioni.")
+                        st.success(f"Prenotazione confermata. Il ristorante reale è: {a['name']}.")
                         st.rerun()
                     except sqlite3.IntegrityError:
                         st.warning("Questo tavolo è stato appena prenotato da un altro utente.")
-
 
 def bookings_page(user: sqlite3.Row) -> None:
     st.markdown("## Prenotazioni")
@@ -716,34 +817,133 @@ def restaurants_page(user: sqlite3.Row) -> None:
 
 
 def business_case_page() -> None:
-    st.markdown("## Business case e modello ricavi")
-    st.markdown("Il modello combina subscription utente e success fee dal ristorante, con monetizzazione della capacità inutilizzata e mantenimento del posizionamento premium.")
-    c1, c2 = st.columns([1.2, .8], gap="large")
-    with c1:
-        st.markdown(table_html(["Variabile", "Ipotesi"], [
-            ["Ristoranti nel pilot", "64"], ["Tavoli disponibili per ristorante", "1 al giorno"], ["Settimane operative", "50 all'anno"],
-            ["Giorni vendibili a settimana", "2 / 3 / 4"], ["Persone per tavolo", "2 o 4"], ["Prezzo per persona", "negoziato con Ristorante"],
-            ["Fee trattenuta al ristorante", "€30 o €50 per tavolo"], ["Subscription utente", "€3,99 al mese"],
-        ], {0}), unsafe_allow_html=True)
-    with c2:
-        st.markdown("""
-        <div class='dark-card'><div class='card-title'>Scenario Low</div><p>2 giorni a settimana</p></div><br>
-        <div class='green-card'><div class='card-title'>Scenario Base</div><p>3 giorni a settimana</p></div><br>
-        <div class='blue-card'><div class='card-title'>Scenario High</div><p>4 giorni a settimana</p></div>
-        """, unsafe_allow_html=True)
-    st.markdown("### Ricavi annui potenziali — Lombardia")
-    st.markdown(table_html(["Scenario", "Fee €30 + subscription", "Fee €50 + subscription"], [
-        ["Low", "€345.216", "€473.216"], ["Base", "€517.824", "€709.824"], ["High", "€690.432", "€946.432"],
-    ], {0, 1, 2}), unsafe_allow_html=True)
-    st.markdown("<div class='alert-green'>✓ <span>Il pilot lombardo può avvicinarsi a <b>€1M di ricavi annui</b> prima dello scale-up nazionale.</span></div>", unsafe_allow_html=True)
-    st.markdown("### Upside Italia")
-    st.markdown("<h1 style='text-align:center;color:#5bbda5'>394 × 3 × 50 = 59.100<br>prenotazioni/anno</h1>", unsafe_allow_html=True)
-    c3, c4 = st.columns(2, gap="large")
-    with c3:
-        st.markdown(table_html(["Volumi e GBV — Italia", "Scenario base"], [["Prenotazioni annue", "59.100"], ["GTV minimo (2 pax × €110)", "€13,0M"], ["GTV massimo (4 pax × €150)", "€35,5M"]], {1}), unsafe_allow_html=True)
-    with c4:
-        st.markdown(table_html(["Voce", "Fee €30", "Fee €50"], [["Ricavi da fee ristorante", "€1,77M", "€2,96M"], ["Ricavi da subscription", "€1,42M", "€1,42M"], ["Totale ricavi", "€3,19M", "€4,37M"]], {0,1,2}), unsafe_allow_html=True)
+    st.markdown("## Business case interattivo")
+    st.markdown("Modifica le leve operative e verifica in tempo reale prenotazioni, GBV, ricavi da fee, ricavi subscription e potenziale di scala. Il modello riprende la logica subscription + success fee del business case originale.")
 
+    st.markdown("<div class='calc-hero'><h3 style='margin-top:0'>Simulator Lombardia / Italia</h3><p>Usa gli input per costruire scenari Low, Base, High o personalizzati. Le formule sono volutamente trasparenti per poter discutere pricing, crescita e unit economics con ristoranti e investitori.</p></div>", unsafe_allow_html=True)
+
+    with st.expander("Input del modello", expanded=True):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            restaurants = st.number_input("Ristoranti attivi", min_value=1, max_value=1000, value=64, step=1)
+            tables_per_day = st.number_input("Tavoli per ristorante/giorno", min_value=1, max_value=10, value=1, step=1)
+        with c2:
+            weeks = st.number_input("Settimane operative/anno", min_value=1, max_value=52, value=50, step=1)
+            days_week = st.slider("Giorni vendibili/settimana", 1, 7, 3)
+        with c3:
+            pax = st.slider("Persone medie per tavolo", 2.0, 4.0, 2.8, 0.1)
+            price_pp = st.slider("Prezzo medio per persona", 80, 250, 130, 5)
+        with c4:
+            fee = st.select_slider("Success fee per tavolo", options=[30, 35, 40, 45, 50], value=50)
+            sub_month = st.number_input("Subscription utente mensile", min_value=0.0, max_value=30.0, value=3.99, step=0.50)
+        c5, c6, c7 = st.columns(3)
+        with c5:
+            bookings_per_user_year = st.slider("Prenotazioni/anno per utente pagante", 1.0, 8.0, 2.0, 0.5)
+        with c6:
+            fill_rate = st.slider("Sell-through disponibilità", 30, 100, 100, 5)
+        with c7:
+            show_italy = st.toggle("Confronta con scala Italia", value=True)
+
+    theoretical_bookings = restaurants * tables_per_day * weeks * days_week
+    bookings = theoretical_bookings * fill_rate / 100
+    gbv = bookings * pax * price_pp
+    fee_revenue = bookings * fee
+    paying_users = bookings / bookings_per_user_year if bookings_per_user_year else 0
+    subscription_revenue = paying_users * sub_month * 12
+    total_revenue = fee_revenue + subscription_revenue
+    restaurant_incremental = gbv - fee_revenue
+
+    kpi_grid([
+        ("Prenotazioni annue", int_it(bookings), f"{fill_rate}% sell-through"),
+        ("Gross Booking Value", eur(gbv, True), f"{pax:.1f} pax · €{price_pp} pp"),
+        ("Ricavi piattaforma", eur(total_revenue, True), "fee + subscription"),
+        ("Utenti paganti stimati", int_it(paying_users), f"{bookings_per_user_year:g} pren./anno"),
+    ])
+
+    r1, r2 = st.columns([1.1, .9], gap="large")
+    with r1:
+        st.markdown("### Formula del caso selezionato")
+        st.markdown(
+            f"""
+            <div class='calc-result'>
+                <div class='big-number'>{int_it(restaurants)} × {int_it(tables_per_day)} × {int_it(days_week)} × {int_it(weeks)} × {fill_rate}%</div>
+                <p style='font-size:1.05rem'>= <b>{int_it(bookings)}</b> prenotazioni annue vendute</p>
+                <table class='app-table'>
+                    <tr><th>Voce</th><th>Valore</th></tr>
+                    <tr><td>Ricavi da success fee</td><td><b>{eur(fee_revenue)}</b></td></tr>
+                    <tr><td>Ricavi da subscription</td><td><b>{eur(subscription_revenue)}</b></td></tr>
+                    <tr><td>Totale ricavi piattaforma</td><td><b>{eur(total_revenue)}</b></td></tr>
+                    <tr><td>Valore incrementale lordo per i ristoranti</td><td><b>{eur(restaurant_incremental)}</b></td></tr>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with r2:
+        st.markdown("### Mix ricavi")
+        fee_pct = int(round((fee_revenue / total_revenue) * 100)) if total_revenue else 0
+        sub_pct = 100 - fee_pct if total_revenue else 0
+        st.markdown(
+            f"""
+            <div class='panel'>
+                <h3>Fee ristorante</h3>
+                <div class='progress-shell'><div class='progress-fill' style='width:{fee_pct}%'></div></div>
+                <p><b>{fee_pct}%</b> · {eur(fee_revenue)}</p>
+                <h3>Subscription utenti</h3>
+                <div class='progress-shell'><div class='progress-fill' style='width:{sub_pct}%'></div></div>
+                <p><b>{sub_pct}%</b> · {eur(subscription_revenue)}</p>
+                <p class='small-muted'>Il modello resta allineato agli interessi dei ristoranti: la piattaforma guadagna quando il tavolo viene confermato.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("### Scenari automatici")
+    scenario_rows = []
+    for name, d in [("Low", 2), ("Base", 3), ("High", 4)]:
+        b = restaurants * tables_per_day * weeks * d * fill_rate / 100
+        users = b / bookings_per_user_year if bookings_per_user_year else 0
+        sub = users * sub_month * 12
+        total_30 = b * 30 + sub
+        total_50 = b * 50 + sub
+        scenario_rows.append([name, d, int_it(b), eur(b * pax * price_pp, True), eur(total_30), eur(total_50)])
+    st.markdown(table_html(["Scenario", "Giorni/sett.", "Prenotazioni", "GBV", "Ricavi fee €30", "Ricavi fee €50"], scenario_rows, {0, 4, 5}), unsafe_allow_html=True)
+
+    st.markdown("### Sensibilità principali")
+    sens_html = "<div class='sensitivity-grid'>"
+    for label, fee_x, days_x in [("Conservativo", 30, 2), ("Base premium", 50, 3), ("Espansivo", 50, 4)]:
+        b = restaurants * tables_per_day * weeks * days_x * fill_rate / 100
+        users = b / bookings_per_user_year if bookings_per_user_year else 0
+        total = b * fee_x + users * sub_month * 12
+        sens_html += f"<div class='dark-card'><div class='card-title'>{label}</div><p>{days_x} giorni/settimana · fee €{fee_x}</p><h2 style='color:#f4d98f'>{eur(total, True)}</h2><p>{int_it(b)} prenotazioni annue</p></div>"
+    sens_html += "</div>"
+    st.markdown(sens_html, unsafe_allow_html=True)
+
+    if show_italy:
+        st.markdown("### Scala Italia")
+        italy_restaurants = 394
+        italy_bookings = italy_restaurants * tables_per_day * weeks * days_week * fill_rate / 100
+        italy_gbv = italy_bookings * pax * price_pp
+        italy_users = italy_bookings / bookings_per_user_year if bookings_per_user_year else 0
+        italy_sub = italy_users * sub_month * 12
+        italy_total = italy_bookings * fee + italy_sub
+        st.markdown(
+            f"""
+            <div class='calc-result'>
+                <div class='big-number'>394 × {int_it(days_week)} × {int_it(weeks)} = {int_it(italy_bookings)}</div>
+                <p>Prenotazioni annue potenziali Italia con gli stessi parametri operativi.</p>
+                <table class='app-table'>
+                    <tr><th>Voce</th><th>Valore</th></tr>
+                    <tr><td>GBV Italia stimato</td><td><b>{eur(italy_gbv, True)}</b></td></tr>
+                    <tr><td>Ricavi subscription Italia</td><td><b>{eur(italy_sub, True)}</b></td></tr>
+                    <tr><td>Ricavi piattaforma Italia</td><td><b>{eur(italy_total, True)}</b></td></tr>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div class='alert-green'>✓ <span>Il simulatore permette di presentare il business case in modo dinamico: cambiando ristoranti, frequenza, prezzo, fee e membership si vede immediatamente l'impatto su ricavi e liquidità del marketplace.</span></div>", unsafe_allow_html=True)
 
 def roadmap_page() -> None:
     st.markdown("## Implementazione graduale: da Milano alla Lombardia in 12 mesi")
