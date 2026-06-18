@@ -704,8 +704,8 @@ def marketplace_page(user: sqlite3.Row) -> None:
         <div class='market-hero'>
             <div class='market-content'>
                 <div class='market-eyebrow'>SECRET TABLES · SAME-DAY · FINE DINING</div>
-                <div class='market-title'>Tonight’s most exclusive tables, quietly unlocked.</div>
-                <div class='market-sub'>Esperienze stellate disponibili oggi. Accesso riservato, conferma immediata, ristorante secret fino al primo click.</div>
+                <div class='market-title'>Unlock tonight’s most exclusive table</div>
+                <div class='market-sub'>Esperienze stellate. Accesso riservato, Conferma immediata, Unique Deal, Ristorante Secret fino al primo click.</div>
                 <div class='market-line'>Hai 60 secondi per trasformare una disponibilità rara nel tuo tavolo di stasera.</div>
                 <div class='market-quick'>
                     <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
