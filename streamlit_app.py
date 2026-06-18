@@ -16,12 +16,16 @@ import streamlit as st
 APP_TITLE = "Secret Star Restaurant"
 DB_PATH = Path(os.environ.get("SECRET_STAR_DB", "secret_star.db"))
 ASSET_DIR = Path(__file__).parent / "assets"
-PRIMARY = "#137a3b"
-MINT = "#5bbda5"
-NAVY = "#1d2438"
-TEAL = "#1d7f64"
-BLUE = "#075197"
-LIGHT_GREEN = "#b8ffbb"
+PRIMARY = "#24a56a"
+MINT = "#77d9bd"
+NAVY = "#0f1724"
+TEAL = "#197a5b"
+BLUE = "#0b4f91"
+LIGHT_GREEN = "#173c2b"
+GOLD = "#d8b45f"
+INK = "#050608"
+CARD = "#101522"
+CARD_2 = "#151b2a"
 
 st.set_page_config(page_title=APP_TITLE, page_icon="⭐", layout="wide", initial_sidebar_state="expanded")
 
@@ -32,6 +36,14 @@ def image_uri(name: str) -> str:
         return ""
     mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
     return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
+def restaurant_image_uri(restaurant_id: int | str) -> str:
+    try:
+        idx = ((int(restaurant_id) - 1) % 8) + 1
+    except (TypeError, ValueError):
+        idx = 1
+    return image_uri(f"restaurant_{idx}.png")
 
 
 def inject_css() -> None:
@@ -112,6 +124,73 @@ def inject_css() -> None:
             .kpi-grid {{ grid-template-columns:1fr 1fr; }} .timeline-grid {{ grid-template-columns:1fr; }} .timeline-card:nth-child(n) {{ margin-top:0; }}
         }}
         @media(max-width: 560px) {{ .kpi-grid {{ grid-template-columns:1fr; }} }}
+
+        /* Elegant black visual system */
+        html, body, [class*="css"] {{ font-family: Inter, Arial, sans-serif; }}
+        .stApp {{ background: radial-gradient(circle at 20% 0%, rgba(36,165,106,.16), transparent 34%), linear-gradient(180deg, #050608 0%, #0b0e14 50%, #050608 100%); color: #f7f5ef; }}
+        header[data-testid="stHeader"] {{ background: rgba(5,6,8,.72); backdrop-filter: blur(12px); }}
+        .block-container {{ max-width: 1400px; padding-top: 1rem; padding-left: clamp(1rem,3vw,3rem); padding-right: clamp(1rem,3vw,3rem); }}
+        h1, h2, h3 {{ color: #f7f5ef; }}
+        .stMarkdown p, .stCaption, label, .small-muted {{ color: rgba(247,245,239,.76) !important; }}
+        div[data-testid="stSidebar"] {{ background: linear-gradient(180deg, #050608 0%, #0e1420 100%); border-right: 1px solid rgba(216,180,95,.18); }}
+        div[data-testid="stSidebar"] .stRadio label {{ border-radius: 14px; padding: .45rem .6rem; }}
+        .hero {{ background: #080a0f; border: 1px solid rgba(216,180,95,.25); box-shadow: 0 36px 100px rgba(0,0,0,.55); grid-template-columns: minmax(420px, 48%) 1fr; }}
+        .hero-img {{ min-height: 600px; background-position: center; filter: saturate(.95) contrast(1.05); }}
+        .hero-copy {{ background: linear-gradient(135deg, rgba(5,6,8,.96), rgba(15,23,36,.91)); position: relative; }}
+        .hero-copy:before {{ content:""; position:absolute; inset: 1rem; border: 1px solid rgba(216,180,95,.18); border-radius: 22px; pointer-events:none; }}
+        .hero-title {{ color: #f7f5ef; text-shadow: 0 8px 34px rgba(0,0,0,.45); }}
+        .hero-subtitle {{ color: rgba(247,245,239,.82); }}
+        .hero-quote {{ color: {GOLD}; }}
+        .pill {{ background: rgba(216,180,95,.10); color: #f4d98f; border-color: rgba(216,180,95,.30); }}
+        .panel, .kpi, .secret-card, .svg-wrap {{ background: linear-gradient(180deg, rgba(21,27,42,.96), rgba(12,16,25,.96)); border: 1px solid rgba(216,180,95,.18); box-shadow: 0 26px 55px rgba(0,0,0,.35); color: #f7f5ef; }}
+        .panel h3, .panel h4 {{ color: #f7f5ef; }}
+        .kpi::before {{ background: linear-gradient(180deg, {GOLD}, {PRIMARY}); }}
+        .kpi .value {{ color: #f7f5ef; }}
+        .kpi .label {{ color: rgba(247,245,239,.62); }}
+        .kpi .delta {{ color: #f4d98f; }}
+        .dark-card {{ background: linear-gradient(135deg, #111827, #07090e); border: 1px solid rgba(216,180,95,.18); }}
+        .green-card {{ background: linear-gradient(135deg, #0f513c, #0a2219); border: 1px solid rgba(119,217,189,.26); }}
+        .blue-card {{ background: linear-gradient(135deg, #0b4f91, #071629); border: 1px solid rgba(133,183,255,.25); }}
+        .app-table {{ background: rgba(15,21,33,.95); border-color: rgba(216,180,95,.15); color: #f7f5ef; }}
+        .app-table th {{ background: rgba(216,180,95,.07); color: #fff4cf; border-bottom-color: rgba(216,180,95,.18); }}
+        .app-table td {{ border-bottom-color: rgba(255,255,255,.07); color: rgba(247,245,239,.88); }}
+        .app-table tr:nth-child(even) td {{ background: rgba(255,255,255,.035); }}
+        .alert-green {{ background: rgba(36,165,106,.16); border: 1px solid rgba(119,217,189,.25); color: #eafff6; }}
+        .alert-blue {{ background: rgba(70,140,220,.17); border: 1px solid rgba(115,180,255,.24); color: #edf6ff; }}
+        .quote-line {{ border-left-color: {GOLD}; color: rgba(247,245,239,.84); }}
+        .secret-card {{ transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; overflow:hidden; }}
+        .secret-card:hover {{ transform: translateY(-4px); border-color: rgba(216,180,95,.45); box-shadow: 0 30px 80px rgba(0,0,0,.48); }}
+        .secret-img {{ height: 235px; background-size: cover; background-position: center; position: relative; }}
+        .secret-img:after {{ content:""; position:absolute; inset:0; background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.72)); }}
+        .restaurant-name {{ color:#f7f5ef; font-size:1.15rem; font-weight:850; margin:.75rem 0 .2rem; }}
+        .card-body-dark {{ padding:1.15rem; }}
+        .badge-green {{ background: rgba(36,165,106,.18); color:#98f2ce; border:1px solid rgba(119,217,189,.20); }}
+        .badge-navy {{ background: rgba(216,180,95,.13); color:#ffe5a3; border:1px solid rgba(216,180,95,.25); }}
+        .badge-blue {{ background: rgba(11,79,145,.35); color:#c7defc; border:1px solid rgba(133,183,255,.20); }}
+        .chef-band {{ border: 1px solid rgba(216,180,95,.20); box-shadow: 0 26px 60px rgba(0,0,0,.40); }}
+        .stTextInput input, .stTextArea textarea, .stNumberInput input, .stDateInput input {{ background: rgba(255,255,255,.06) !important; color:#f7f5ef !important; border: 1px solid rgba(216,180,95,.20) !important; }}
+        .stSelectbox div[data-baseweb="select"] > div {{ background: rgba(255,255,255,.06) !important; color:#f7f5ef !important; border-color: rgba(216,180,95,.20) !important; }}
+        .stButton > button[kind="primary"] {{ background: linear-gradient(135deg, {PRIMARY}, #0b6a48); border-color: rgba(119,217,189,.35); color:white; }}
+        .stButton > button {{ background: rgba(216,180,95,.08); color:#fff4cf; border:1px solid rgba(216,180,95,.25); }}
+        .mobile-only {{ display:none; }}
+        @media(max-width: 900px) {{
+            .hero {{ grid-template-columns:1fr; border-radius: 22px; }}
+            .hero-img {{ min-height: 360px; }}
+            .hero-copy {{ padding: 2rem 1.4rem; }}
+            .hero-copy:before {{ inset:.6rem; border-radius: 18px; }}
+            .secret-img {{ height: 220px; }}
+            .desktop-only {{ display:none; }} .mobile-only {{ display:block; }}
+        }}
+        @media(max-width: 640px) {{
+            .block-container {{ padding-left: .9rem; padding-right: .9rem; }}
+            .hero-img {{ min-height: 300px; }}
+            .hero-title {{ font-size: 2.35rem; }}
+            .hero-subtitle {{ font-size: 1rem; }}
+            .hero-quote {{ font-size: 1.22rem; }}
+            .secret-card {{ border-radius: 16px; }}
+            .secret-img {{ height: 200px; }}
+            .app-table th, .app-table td {{ padding: .7rem; font-size: .86rem; }}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -475,7 +554,7 @@ def marketplace_page(user: sqlite3.Row) -> None:
     with col3:
         taste = st.text_input("Ricerca taste", "")
     sql = """
-    SELECT a.*, r.city, r.area, r.stars, r.taste, r.avg_rating
+    SELECT a.*, r.name, r.city, r.area, r.stars, r.taste, r.avg_rating
     FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id
     WHERE a.status='available' AND a.service_date>=?
     """
@@ -500,13 +579,13 @@ def marketplace_page(user: sqlite3.Row) -> None:
             st.markdown(
                 f"""
                 <div class='secret-card'>
-                    <div class='secret-img'></div>
-                    <div style='padding:1.1rem'>
+                    <div class='secret-img' style="background-image:url('{restaurant_image_uri(a['restaurant_id'])}')"></div>
+                    <div class='card-body-dark'>
                         <span class='badge badge-navy'>Secret Restaurant #{a['restaurant_id']}</span>
-                        <span class='badge badge-green'>{a['stars']}★</span>
-                        <h3 style='font-size:1.25rem;margin:.8rem 0 .2rem'>Taste {html.escape(a['taste'])}</h3>
+                        <span class='badge badge-green'>{a['stars']}★ Michelin</span>
+                        <div class='restaurant-name'>Taste {html.escape(a['taste'])}</div>
                         <p class='small-muted'>{html.escape(a['city'])} · {html.escape(a['area'])} · {a['service_date']} · {a['service_time']}</p>
-                        <p>{html.escape(a['menu_title'])}<br><b>€{a['price_per_person']} pp</b> · {a['seats']} persone · rating {a['avg_rating']}</p>
+                        <p>{html.escape(a['menu_title'])}<br><b style='color:#f4d98f'>€{a['price_per_person']} pp</b> · {a['seats']} persone · rating {a['avg_rating']}</p>
                     </div>
                 </div>
                 """,
@@ -587,6 +666,25 @@ def restaurants_page(user: sqlite3.Row) -> None:
                     st.success("Ristorante creato.")
                     st.rerun()
     rows = fetchall("SELECT * FROM restaurants ORDER BY city, stars DESC")
+    gallery_cols = st.columns(3)
+    for idx, r in enumerate(rows):
+        with gallery_cols[idx % 3]:
+            st.markdown(
+                f"""
+                <div class='secret-card'>
+                    <div class='secret-img' style="background-image:url('{restaurant_image_uri(r['id'])}')"></div>
+                    <div class='card-body-dark'>
+                        <span class='badge badge-green'>{r['stars']}★ Michelin</span>
+                        <span class='badge badge-blue'>{html.escape(r['city'])}</span>
+                        <div class='restaurant-name'>{html.escape(r['name'])}</div>
+                        <p class='small-muted'>{html.escape(r['area'])} · Taste {html.escape(r['taste'])}</p>
+                        <p>Rating <b style='color:#f4d98f'>{r['avg_rating']}</b> · {'Attivo' if r['active'] else 'Non attivo'}</p>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    st.markdown("### Tabella operativa")
     table = [[r["name"], r["city"], r["area"], f"{r['stars']}★", r["taste"], r["avg_rating"], "Attivo" if r["active"] else "Non attivo"] for r in rows]
     st.markdown(table_html(["Nome", "Città", "Area", "Stelle", "Taste", "Rating", "Stato"], table, {0, 3}), unsafe_allow_html=True)
     st.markdown("### Pubblica disponibilità entro le 10:00")

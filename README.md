@@ -1,6 +1,6 @@
-# Secret Star Restaurant — Streamlit Picture Style
+# Secret Star Restaurant — Streamlit Black Edition
 
-Applicazione Streamlit pronta per GitHub e Streamlit Community Cloud, riscritta con una grafica coerente con il deck "Secret Star Restaurant": verde premium, navy, card scure, alert verde, tabelle editoriali e immagini estratte dal documento fornito.
+Applicazione Streamlit pronta per GitHub e Streamlit Community Cloud, aggiornata con una grafica elegante su sfondo nero: card premium, accenti verde/oro, layout responsive desktop/mobile e fotografie differenti per ogni ristorante.
 
 ## File principale per Streamlit
 
@@ -44,21 +44,23 @@ assets/
 README.md
 ```
 
-## Note tecniche
+## Aggiornamenti grafici inclusi
 
-- Non usa Plotly, Altair, Pandas o SQLAlchemy.
-- Non usa `st.line_chart`, quindi evita l'errore Altair visto su Python 3.14.
-- Usa SQLite tramite libreria standard Python.
-- Le password demo sono salvate con PBKDF2-HMAC-SHA256.
-- Il database viene creato automaticamente al primo avvio.
-- I dati su Streamlit Cloud sono dimostrativi e possono essere resettati al riavvio dell'ambiente.
+- Tema nero elegante con accenti verde premium e oro.
+- Card marketplace ridisegnate per desktop e mobile.
+- Immagine diversa per ogni ristorante: `assets/restaurant_1.png` ... `assets/restaurant_8.png`.
+- Gallery visuale nella sezione Ristoranti.
+- Immagini adattive con `background-size: cover`, overlay scuro e testi leggibili.
+- Layout responsive: griglie larghe su desktop e schede verticali su mobile.
+- Nessuna dipendenza da Plotly, Altair, Pandas o SQLAlchemy.
+- Nessun uso di `st.line_chart`, per evitare errori Altair su Streamlit Cloud.
 
 ## Funzionalità
 
 - Login con ruoli admin, manager e customer.
 - Dashboard KPI e grafici SVG interni.
 - Marketplace con ristorante secret fino alla prenotazione.
-- Prenotazioni collegate al database.
+- Prenotazioni collegate al database SQLite.
 - Review clienti.
 - Gestione ristoranti e pubblicazione disponibilità.
 - Business case Lombardia e Italia.
