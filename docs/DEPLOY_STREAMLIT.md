@@ -1,17 +1,18 @@
 # Deploy Streamlit
 
-## Main file path
+Il repository deve avere questa struttura minima:
 
 ```text
 streamlit_app.py
+requirements.txt
+runtime.txt
+.streamlit/config.toml
 ```
 
-## Comando locale
+Su Streamlit Cloud usa:
 
-```bash
-streamlit run streamlit_app.py
+```text
+Main file path: streamlit_app.py
 ```
 
-## Repository GitHub
-
-Carica tutto il contenuto della cartella nel repository. Streamlit Cloud installera' automaticamente le dipendenze da `requirements.txt`.
+Se l'app non parte, apri **Manage app > Logs** e controlla l'errore completo.
