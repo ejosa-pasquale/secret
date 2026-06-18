@@ -221,6 +221,10 @@ def inject_css() -> None:
         .big-number {{ color:#f4d98f; font-size:clamp(2rem,4vw,4.6rem); line-height:1; font-weight:950; letter-spacing:-.055em; }}
         .sensitivity-grid {{ display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:1rem; }}
         @media(max-width: 900px) {{ .market-quick {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} .market-card {{ grid-template-columns:1fr; }} .market-img {{ min-height:230px; }} .market-list {{ grid-template-columns:1fr; }} .sensitivity-grid {{ grid-template-columns:1fr; }} }}
+        .reveal-box {{ background: linear-gradient(135deg, rgba(216,180,95,.18), rgba(36,165,106,.12)); border:1px solid rgba(216,180,95,.32); border-radius:18px; padding:1rem; margin:.8rem 0; color:#fff; }}
+        .reveal-title {{ color:#f4d98f; font-weight:950; font-size:1.25rem; margin-bottom:.25rem; }}
+        .warning-box {{ background: rgba(180,50,50,.16); border:1px solid rgba(255,120,120,.28); border-radius:16px; padding:1rem; color:#ffecec; margin:.8rem 0; }}
+        .market-img:after {{ background:linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.88)); }}
         @media(max-width: 560px) {{ .market-quick {{ grid-template-columns:1fr; }} .market-title {{ font-size:2.05rem; }} .market-hero {{ border-radius:20px; padding:1.2rem; }} .market-card {{ border-radius:18px; }} .market-body {{ padding:1rem; }} .market-name {{ font-size:1.2rem; }} .market-price {{ font-size:1.28rem; }} }}
         </style>
         """,
@@ -249,6 +253,44 @@ def fetchall(sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
 def fetchone(sql: str, params: Iterable[Any] = ()) -> sqlite3.Row | None:
     with closing(db()) as con:
         return con.execute(sql, tuple(params)).fetchone()
+
+
+def cancellation_count(user_id: int) -> int:
+    row = fetchone("SELECT COUNT(*) c FROM bookings WHERE user_id=? AND status='cancelled'", (user_id,))
+    return int(row["c"] if row else 0)
+
+
+def create_booking_if_available(availability_id: int, user_id: int, guest_name: str, guests: int, gross_value: float, platform_fee: float) -> None:
+    with closing(db()) as con:
+        cur = con.execute(
+            "UPDATE availabilities SET status='booked' WHERE id=? AND status='available'",
+            (availability_id,),
+        )
+        if cur.rowcount != 1:
+            raise sqlite3.IntegrityError("availability_not_available")
+        con.execute(
+            "INSERT INTO bookings(availability_id,user_id,guest_name,guests,gross_value,platform_fee) VALUES(?,?,?,?,?,?)",
+            (availability_id, user_id, guest_name, guests, gross_value, platform_fee),
+        )
+        con.commit()
+
+
+def cancel_booking(booking_id: int, user_id: int) -> bool:
+    with closing(db()) as con:
+        row = con.execute(
+            """
+            SELECT b.id, b.status, b.availability_id, a.service_date
+            FROM bookings b JOIN availabilities a ON a.id=b.availability_id
+            WHERE b.id=? AND b.user_id=?
+            """,
+            (booking_id, user_id),
+        ).fetchone()
+        if not row or row["status"] != "confirmed" or row["service_date"] < str(date.today()):
+            return False
+        con.execute("UPDATE bookings SET status='cancelled' WHERE id=? AND user_id=?", (booking_id, user_id))
+        con.execute("UPDATE availabilities SET status='available' WHERE id=?", (row["availability_id"],))
+        con.commit()
+        return True
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
@@ -599,12 +641,15 @@ def marketplace_page(user: sqlite3.Row) -> None:
         WHERE a.status='available' AND a.service_date>=?
     """, (str(today),))["c"]
     next_date = fetchone("SELECT MIN(service_date) d FROM availabilities WHERE status='available' AND service_date>=?", (str(today),))["d"] or str(today)
+    user_cancellations = cancellation_count(int(user["id"]))
+    blocked = user_cancellations >= 2
+
     st.markdown(
         f"""
         <div class='market-hero'>
             <div class='market-eyebrow'>Private access · Same day tables · Fine dining</div>
             <div class='market-title'>Marketplace premium per tavoli stellati last-minute</div>
-            <div class='market-sub'>Filtra per location, persone, budget e taste. L'identità del ristorante resta riservata fino alla conferma, preservando esclusività e posizionamento.</div>
+            <div class='market-sub'>Scegli location, numero di ospiti e budget. Il nome del ristorante resta riservato fino al primo click di prenotazione; da quel momento hai 60 secondi per confermare.</div>
             <div class='market-quick'>
                 <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
                 <div class='quick-card'><b>{cities_count}</b><span>Location attive</span></div>
@@ -616,33 +661,43 @@ def marketplace_page(user: sqlite3.Row) -> None:
         unsafe_allow_html=True,
     )
 
+    if blocked:
+        st.markdown(
+            """
+            <div class='warning-box'>
+                <b>Prenotazioni bloccate.</b><br>
+                Questo account ha già raggiunto 2 cancellazioni. Per preservare la qualità della community premium non è possibile effettuare nuove prenotazioni.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif user_cancellations == 1:
+        st.warning("Hai già 1 cancellazione registrata. Alla seconda cancellazione il sistema bloccherà nuove prenotazioni.")
+
     with st.container():
         f1, f2, f3, f4 = st.columns([1, 1, 1, 1.2])
         with f1:
             city = st.selectbox("Location", ["Tutte", "Milano", "Como", "Bergamo", "Brescia"])
         with f2:
-            seats = st.selectbox("Persone", ["Tutte", "2", "4"])
+            guests_requested = st.selectbox("Persone", [1, 2, 3, 4], index=1)
         with f3:
-            max_price = st.slider("Budget max pp", 90, 300, 180, 5)
+            max_price = st.slider("Budget max per persona", 90, 300, 180, 5)
         with f4:
-            taste = st.text_input("Taste o area", placeholder="es. vegetale, Brera, wine")
+            taste = st.text_input("Ricerca", placeholder="città, area, menu o stile")
 
     sql = """
     SELECT a.*, r.name, r.city, r.area, r.stars, r.taste, r.avg_rating
     FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id
-    WHERE a.status='available' AND a.service_date>=? AND a.price_per_person<=?
+    WHERE a.status='available' AND a.service_date>=? AND a.price_per_person<=? AND a.seats>=?
     """
-    params: list[Any] = [str(today), int(max_price)]
+    params: list[Any] = [str(today), int(max_price), int(guests_requested)]
     if city != "Tutte":
         sql += " AND r.city=?"
         params.append(city)
-    if seats != "Tutte":
-        sql += " AND a.seats=?"
-        params.append(int(seats))
     if taste.strip():
-        sql += " AND (lower(r.taste) LIKE ? OR lower(r.area) LIKE ? OR lower(a.menu_title) LIKE ?)"
+        sql += " AND (lower(r.taste) LIKE ? OR lower(r.area) LIKE ? OR lower(a.menu_title) LIKE ? OR lower(r.city) LIKE ?)"
         q = f"%{taste.lower()}%"
-        params.extend([q, q, q])
+        params.extend([q, q, q, q])
     sql += " ORDER BY a.service_date, a.price_per_person, r.stars DESC LIMIT 24"
     rows = fetchall(sql, params)
 
@@ -651,18 +706,26 @@ def marketplace_page(user: sqlite3.Row) -> None:
         st.info("Nessun tavolo disponibile con questi filtri. Prova ad ampliare budget, location o numero di persone.")
         return
 
+    now_ts = datetime.utcnow().timestamp()
+    pending = st.session_state.get("pending_booking")
+    if pending and now_ts > float(pending.get("expires_at", 0)):
+        st.session_state.pop("pending_booking", None)
+        pending = None
+        st.warning("Il tempo di conferma è scaduto. Puoi selezionare di nuovo un tavolo se è ancora disponibile.")
+
     for idx, a in enumerate(rows):
         restaurant_code = f"SSR-{int(a['restaurant_id']):03d}"
-        discount_label = "Accesso riservato"
-        scarcity = max(18, 92 - idx * 7)
         img = restaurant_image_uri(a['restaurant_id'])
-        gross = a["seats"] * a["price_per_person"]
+        gross = int(guests_requested) * float(a["price_per_person"])
+        pending_for_this = bool(pending and int(pending.get("availability_id", -1)) == int(a["id"]))
+        display_name = html.escape(a["name"] if pending_for_this else restaurant_code)
+        title_suffix = "Nome reale rivelato" if pending_for_this else "Esperienza riservata"
         st.markdown(
             f"""
             <div class='market-card'>
                 <div class='market-img' style="background-image:url('{img}')">
                     <div class='market-img-label'>
-                        <span class='badge badge-navy'>Secret fino alla conferma</span>
+                        <span class='badge badge-navy'>{'Ristorante rivelato' if pending_for_this else 'Secret fino alla prenotazione'}</span>
                         <span class='badge badge-green'>{a['stars']}★ Michelin</span>
                     </div>
                 </div>
@@ -672,42 +735,76 @@ def marketplace_page(user: sqlite3.Row) -> None:
                             <span class='badge badge-blue'>{html.escape(a['city'])} · {html.escape(a['area'])}</span>
                             <span class='market-price'>€{a['price_per_person']} pp</span>
                         </div>
-                        <div class='market-name'>{restaurant_code} · Taste {html.escape(a['taste'])}</div>
-                        <div class='market-meta'>{html.escape(a['service_date'])} · {html.escape(a['service_time'])} · {a['seats']} persone · rating {a['avg_rating']} · GBV {eur(gross)}</div>
+                        <div class='market-name'>{display_name} · {title_suffix}</div>
+                        <div class='market-meta'>{html.escape(a['service_date'])} · {html.escape(a['service_time'])} · prenoti {guests_requested} persone · tavolo fino a {a['seats']} · rating {a['avg_rating']}</div>
                         <div class='market-list'>
                             <div>🍽️ {html.escape(a['menu_title'])}</div>
-                            <div>✨ {html.escape(discount_label)}</div>
+                            <div>✨ Accesso riservato</div>
                             <div>📍 Location premium selezionata</div>
-                            <div>🔒 Nome ristorante visibile dopo prenotazione</div>
+                            <div>🔒 Conferma finale entro 60 secondi</div>
                         </div>
-                        <div class='progress-shell'><div class='progress-fill' style='width:{scarcity}%'></div></div>
-                        <p class='small-muted' style='margin-top:.55rem'>Domanda qualificata stimata: {scarcity}% · disponibilità pubblicata entro le 10:00</p>
                     </div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        b1, b2, b3 = st.columns([1.2, 1, 1])
+        b1, b2, b3 = st.columns([1.25, .9, 1])
         with b1:
             st.caption(f"Esperienza: {a['experience']}")
         with b2:
-            st.caption(f"Fee piattaforma: €{a['restaurant_fee']} · Totale tavolo: {eur(gross)}")
+            if user["role"] == "customer":
+                st.caption(f"Totale esperienza: {eur(gross)}")
+            else:
+                st.caption(f"Fee piattaforma: €{a['restaurant_fee']} · Totale tavolo: {eur(gross)}")
         with b3:
-            if st.button("Prenota esperienza", key=f"book_{a['id']}", type="primary", use_container_width=True):
-                if user["membership_status"] != "premium":
-                    st.error("Serve una membership premium attiva per prenotare.")
-                else:
-                    try:
-                        execute("UPDATE availabilities SET status='booked' WHERE id=? AND status='available'", (a["id"],))
-                        execute(
-                            "INSERT INTO bookings(availability_id,user_id,guest_name,guests,gross_value,platform_fee) VALUES(?,?,?,?,?,?)",
-                            (a["id"], user["id"], user["name"], a["seats"], gross, a["restaurant_fee"]),
-                        )
-                        st.success(f"Prenotazione confermata. Il ristorante reale è: {a['name']}.")
+            if pending_for_this:
+                remaining = max(0, int(float(pending["expires_at"]) - datetime.utcnow().timestamp()))
+                st.markdown(
+                    f"""
+                    <div class='reveal-box'>
+                        <div class='reveal-title'>{html.escape(a['name'])}</div>
+                        Hai <b>{remaining} secondi</b> per confermare questa prenotazione.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                c_confirm, c_cancel = st.columns(2)
+                with c_confirm:
+                    if st.button("Conferma ora", key=f"confirm_{a['id']}", type="primary", use_container_width=True, disabled=blocked):
+                        if user["membership_status"] != "premium":
+                            st.error("Serve una membership premium attiva per prenotare.")
+                        elif datetime.utcnow().timestamp() > float(pending["expires_at"]):
+                            st.session_state.pop("pending_booking", None)
+                            st.error("Tempo scaduto. Seleziona nuovamente il tavolo.")
+                            st.rerun()
+                        else:
+                            try:
+                                create_booking_if_available(int(a["id"]), int(user["id"]), str(user["name"]), int(guests_requested), float(gross), float(a["restaurant_fee"]))
+                                st.session_state.pop("pending_booking", None)
+                                st.success(f"Prenotazione confermata. Il ristorante reale è: {a['name']}.")
+                                st.rerun()
+                            except sqlite3.IntegrityError:
+                                st.session_state.pop("pending_booking", None)
+                                st.warning("Questo tavolo è stato appena prenotato da un altro utente.")
+                                st.rerun()
+                with c_cancel:
+                    if st.button("Annulla", key=f"abort_{a['id']}", use_container_width=True):
+                        st.session_state.pop("pending_booking", None)
                         st.rerun()
-                    except sqlite3.IntegrityError:
-                        st.warning("Questo tavolo è stato appena prenotato da un altro utente.")
+            else:
+                if st.button("Prenota esperienza", key=f"book_{a['id']}", type="primary", use_container_width=True, disabled=blocked):
+                    if user["membership_status"] != "premium":
+                        st.error("Serve una membership premium attiva per prenotare.")
+                    elif cancellation_count(int(user["id"])) >= 2:
+                        st.error("Prenotazioni bloccate dopo 2 cancellazioni.")
+                    else:
+                        st.session_state.pending_booking = {
+                            "availability_id": int(a["id"]),
+                            "guest_count": int(guests_requested),
+                            "expires_at": datetime.utcnow().timestamp() + 60,
+                        }
+                        st.rerun()
 
 def bookings_page(user: sqlite3.Row) -> None:
     st.markdown("## Prenotazioni")
@@ -733,6 +830,25 @@ def bookings_page(user: sqlite3.Row) -> None:
         return
     rows_html = [[r["id"], r["restaurant"], f"{r['city']} · {r['area']}", f"{r['service_date']} {r['service_time']}", r["guests"], f"€{r['gross_value']}", r["status"]] for r in rows]
     st.markdown(table_html(["ID", "Ristorante", "Location", "Servizio", "Pax", "GBV", "Stato"], rows_html, {1, 5}), unsafe_allow_html=True)
+    if user["role"] == "customer":
+        cancels = cancellation_count(int(user["id"]))
+        st.markdown(f"### Cancellazioni ({cancels}/2)")
+        future_confirmed = [r for r in rows if r["status"] == "confirmed" and r["service_date"] >= str(date.today())]
+        if future_confirmed:
+            st.caption("Puoi cancellare una prenotazione futura. Dopo 2 cancellazioni il marketplace blocca nuove prenotazioni.")
+            for r in future_confirmed:
+                c_info, c_btn = st.columns([3, 1])
+                with c_info:
+                    st.write(f"**{r['restaurant']}** · {r['service_date']} {r['service_time']} · {r['guests']} persone")
+                with c_btn:
+                    if st.button("Cancella", key=f"cancel_booking_{r['id']}", use_container_width=True):
+                        if cancel_booking(int(r["id"]), int(user["id"])):
+                            st.success("Prenotazione cancellata. Il tavolo è tornato disponibile.")
+                            st.rerun()
+                        else:
+                            st.error("Non è possibile cancellare questa prenotazione.")
+        else:
+            st.caption("Nessuna prenotazione futura cancellabile.")
     st.markdown("### Lascia una review")
     completed = [r for r in rows if r["status"] in ("confirmed", "completed")]
     if completed:
