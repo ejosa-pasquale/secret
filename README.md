@@ -1,8 +1,8 @@
-# Secret Star Restaurant - Streamlit
+# Secret Star Restaurant — Streamlit Picture Style
 
-Applicazione Streamlit autonoma per il marketplace premium di prenotazioni last-minute nei ristoranti stellati.
+Applicazione Streamlit pronta per GitHub e Streamlit Community Cloud, riscritta con una grafica coerente con il deck "Secret Star Restaurant": verde premium, navy, card scure, alert verde, tabelle editoriali e immagini estratte dal documento fornito.
 
-## File principale per Streamlit Cloud
+## File principale per Streamlit
 
 ```text
 streamlit_app.py
@@ -11,64 +11,56 @@ streamlit_app.py
 ## Avvio locale
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-Su Windows:
+## Credenziali demo
 
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-streamlit run streamlit_app.py
-```
+| Ruolo | Email | Password |
+|---|---|---|
+| Admin | admin@secretstar.local | Admin123! |
+| Manager | manager@secretstar.local | Manager123! |
+| Cliente | cliente@secretstar.local | Cliente123! |
 
-## Deploy su Streamlit Community Cloud
+## Deploy su Streamlit Cloud
 
 1. Carica tutti i file nella root del repository GitHub.
-2. Su Streamlit Cloud seleziona il repository.
-3. Imposta **Main file path** a:
+2. Crea una nuova app su Streamlit Cloud.
+3. Imposta `Main file path` su:
 
 ```text
 streamlit_app.py
 ```
 
-4. Verifica che `requirements.txt` e `runtime.txt` siano nella stessa cartella di `streamlit_app.py`.
-
-## Credenziali demo
+4. Verifica che nella root ci siano:
 
 ```text
-Admin:    admin@secretstar.local / Admin123!
-Manager:  manager@secretstar.local / Manager123!
-Cliente:  cliente@secretstar.local / Cliente123!
+streamlit_app.py
+requirements.txt
+runtime.txt
+.streamlit/config.toml
+assets/
+README.md
 ```
 
-## Dipendenze
+## Note tecniche
 
-Questa versione usa solo:
+- Non usa Plotly, Altair, Pandas o SQLAlchemy.
+- Non usa `st.line_chart`, quindi evita l'errore Altair visto su Python 3.14.
+- Usa SQLite tramite libreria standard Python.
+- Le password demo sono salvate con PBKDF2-HMAC-SHA256.
+- Il database viene creato automaticamente al primo avvio.
+- I dati su Streamlit Cloud sono dimostrativi e possono essere resettati al riavvio dell'ambiente.
 
-```text
-streamlit
-sqlite3 standard library
-hashlib standard library
-```
+## Funzionalità
 
-Non usa Plotly, SQLAlchemy o bcrypt per evitare errori di installazione su Streamlit Cloud.
-
-## Funzionalita incluse
-
-- Login e registrazione cliente
-- Ruoli admin, restaurant manager e customer
-- Dashboard KPI
-- Grafico ricavi con `st.line_chart`
-- Marketplace last-minute
-- Ristorante secret fino alla prenotazione
-- Abbonamento monthly/annual
-- Prenotazioni collegate al database SQLite
-- Gestione ristoranti
-- Gestione disponibilita
-- Review e qualita
-- Database SQLite inizializzato automaticamente
+- Login con ruoli admin, manager e customer.
+- Dashboard KPI e grafici SVG interni.
+- Marketplace con ristorante secret fino alla prenotazione.
+- Prenotazioni collegate al database.
+- Review clienti.
+- Gestione ristoranti e pubblicazione disponibilità.
+- Business case Lombardia e Italia.
+- Roadmap 12 mesi.
+- Sezione admin per reset demo e manutenzione.

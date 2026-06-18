@@ -1,577 +1,738 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
+import html
 import os
-import secrets
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import streamlit as st
 
-APP_NAME = "Secret Star Restaurant"
-DB_PATH = Path(os.getenv("SECRET_STAR_DB", "data/secret_star_streamlit.db"))
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+APP_TITLE = "Secret Star Restaurant"
+DB_PATH = Path(os.environ.get("SECRET_STAR_DB", "secret_star.db"))
+ASSET_DIR = Path(__file__).parent / "assets"
+PRIMARY = "#137a3b"
+MINT = "#5bbda5"
+NAVY = "#1d2438"
+TEAL = "#1d7f64"
+BLUE = "#075197"
+LIGHT_GREEN = "#b8ffbb"
 
-st.set_page_config(page_title=APP_NAME, page_icon="⭐", layout="wide")
-
-
-def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
-def execute(sql: str, params: tuple[Any, ...] = ()) -> None:
-    with closing(connect()) as conn:
-        conn.execute(sql, params)
-        conn.commit()
+st.set_page_config(page_title=APP_TITLE, page_icon="⭐", layout="wide", initial_sidebar_state="expanded")
 
 
-def fetch_all(sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-    with closing(connect()) as conn:
-        rows = conn.execute(sql, params).fetchall()
-        return [dict(row) for row in rows]
-
-
-def fetch_one(sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
-    with closing(connect()) as conn:
-        row = conn.execute(sql, params).fetchone()
-        return dict(row) if row else None
-
-
-def hash_password(password: str, salt: str | None = None) -> str:
-    salt = salt or secrets.token_hex(16)
-    digest = hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
-    return f"{salt}${digest}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        salt, digest = stored.split("$", 1)
-    except ValueError:
-        return False
-    return secrets.compare_digest(hash_password(password, salt), stored)
-
-
-def init_db() -> None:
-    with closing(connect()) as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                full_name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('admin','restaurant','customer')),
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS ix_users_email ON users(email);
-            CREATE INDEX IF NOT EXISTS ix_users_role ON users(role);
-
-            CREATE TABLE IF NOT EXISTS restaurants (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                manager_id INTEGER,
-                public_code TEXT NOT NULL UNIQUE,
-                name TEXT NOT NULL,
-                secret_alias TEXT NOT NULL,
-                city TEXT NOT NULL,
-                area TEXT NOT NULL,
-                cuisine TEXT NOT NULL,
-                michelin_stars INTEGER NOT NULL DEFAULT 1,
-                address TEXT NOT NULL,
-                description TEXT NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(manager_id) REFERENCES users(id) ON DELETE SET NULL
-            );
-            CREATE INDEX IF NOT EXISTS ix_restaurants_city ON restaurants(city);
-            CREATE INDEX IF NOT EXISTS ix_restaurants_cuisine ON restaurants(cuisine);
-
-            CREATE TABLE IF NOT EXISTS availabilities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                restaurant_id INTEGER NOT NULL,
-                service_date TEXT NOT NULL,
-                service_time TEXT NOT NULL,
-                city TEXT NOT NULL,
-                cuisine TEXT NOT NULL,
-                party_size INTEGER NOT NULL,
-                price_per_person REAL NOT NULL,
-                restaurant_fee REAL NOT NULL,
-                menu_title TEXT NOT NULL,
-                menu_description TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','booked','expired','cancelled')),
-                published_at TEXT NOT NULL,
-                UNIQUE(restaurant_id, service_date, service_time),
-                FOREIGN KEY(restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS ix_availability_search ON availabilities(service_date, city, cuisine, status);
-
-            CREATE TABLE IF NOT EXISTS bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                customer_id INTEGER NOT NULL,
-                availability_id INTEGER NOT NULL UNIQUE,
-                booking_code TEXT NOT NULL UNIQUE,
-                party_size INTEGER NOT NULL,
-                total_amount REAL NOT NULL,
-                platform_fee REAL NOT NULL,
-                status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled','completed','no_show')),
-                booking_date TEXT NOT NULL,
-                notes TEXT,
-                FOREIGN KEY(customer_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY(availability_id) REFERENCES availabilities(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS ix_bookings_status ON bookings(status);
-            CREATE INDEX IF NOT EXISTS ix_bookings_customer ON bookings(customer_id);
-
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                plan_name TEXT NOT NULL,
-                monthly_price REAL NOT NULL,
-                status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','cancelled')),
-                starts_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS ix_subscriptions_user ON subscriptions(user_id, status, expires_at);
-
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                booking_id INTEGER NOT NULL UNIQUE,
-                restaurant_id INTEGER NOT NULL,
-                customer_id INTEGER NOT NULL,
-                rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
-                comment TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-                FOREIGN KEY(restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE,
-                FOREIGN KEY(customer_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-            """
-        )
-        conn.commit()
-
-
-def create_user(full_name: str, email: str, password: str, role: str) -> None:
-    execute(
-        "INSERT INTO users(full_name,email,password_hash,role,created_at) VALUES(?,?,?,?,?)",
-        (full_name.strip(), email.lower().strip(), hash_password(password), role, datetime.utcnow().isoformat()),
-    )
-
-
-def seed_demo_data() -> None:
-    if fetch_one("SELECT id FROM users LIMIT 1"):
-        return
-    create_user("Admin Secret Star", "admin@secretstar.local", "Admin123!", "admin")
-    create_user("Restaurant Manager", "manager@secretstar.local", "Manager123!", "restaurant")
-    create_user("Cliente Premium", "cliente@secretstar.local", "Cliente123!", "customer")
-    manager = fetch_one("SELECT id FROM users WHERE email=?", ("manager@secretstar.local",))
-    customer = fetch_one("SELECT id FROM users WHERE email=?", ("cliente@secretstar.local",))
-    manager_id = manager["id"] if manager else None
-    restaurants = [
-        (manager_id, "SSR-MI-001", "Luce Segreta Milano", "Secret Milano Brera", "Milano", "Brera", "Contemporanea", 1, "Via Brera 12, Milano", "Fine dining contemporaneo con menu degustazione stagionale."),
-        (manager_id, "SSR-CO-002", "Stella sul Lago", "Secret Lago di Como", "Como", "Lago di Como", "Italiana creativa", 1, "Lungo Lago 8, Como", "Esperienza premium vista lago con cucina territoriale."),
-        (manager_id, "SSR-BG-003", "Orizzonte Gourmet", "Secret Bergamo Alta", "Bergamo", "Citta Alta", "Tradizionale evoluta", 2, "Piazza Vecchia 4, Bergamo", "Cucina lombarda reinterpretata in chiave stellata."),
-        (manager_id, "SSR-FC-004", "Cantina Stellata", "Secret Franciacorta", "Brescia", "Franciacorta", "Wine pairing", 1, "Via Vigne 7, Brescia", "Percorso gourmet con pairing vini premium."),
-    ]
-    with closing(connect()) as conn:
-        conn.executemany(
-            """INSERT INTO restaurants(manager_id,public_code,name,secret_alias,city,area,cuisine,michelin_stars,address,description,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-            [r + (datetime.utcnow().isoformat(),) for r in restaurants],
-        )
-        conn.commit()
-    today = date.today()
-    rest_rows = fetch_all("SELECT * FROM restaurants ORDER BY id")
-    for index, restaurant in enumerate(rest_rows):
-        for offset in range(0, 7):
-            execute(
-                """INSERT OR IGNORE INTO availabilities(restaurant_id,service_date,service_time,city,cuisine,party_size,price_per_person,restaurant_fee,menu_title,menu_description,status,published_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    restaurant["id"],
-                    (today + timedelta(days=offset)).isoformat(),
-                    "20:30",
-                    restaurant["city"],
-                    restaurant["cuisine"],
-                    2 if offset % 2 == 0 else 4,
-                    110.0 + index * 15,
-                    30.0 if index < 2 else 50.0,
-                    "Percorso Secret Star",
-                    "Tavolo e menu degustazione selezionato. Nome ristorante rivelato dopo la conferma.",
-                    "available",
-                    datetime.utcnow().isoformat(),
-                ),
-            )
-    first_slot = fetch_one("SELECT * FROM availabilities ORDER BY id LIMIT 1")
-    if first_slot and customer:
-        code = "SSR-DEMO-001"
-        execute("UPDATE availabilities SET status='booked' WHERE id=?", (first_slot["id"],))
-        execute(
-            """INSERT INTO bookings(customer_id,availability_id,booking_code,party_size,total_amount,platform_fee,status,booking_date,notes)
-            VALUES(?,?,?,?,?,?,?,?,?)""",
-            (customer["id"], first_slot["id"], code, first_slot["party_size"], first_slot["party_size"] * first_slot["price_per_person"], first_slot["restaurant_fee"], "completed", datetime.utcnow().isoformat(), "Prenotazione demo completata."),
-        )
-        booking = fetch_one("SELECT id FROM bookings WHERE booking_code=?", (code,))
-        if booking:
-            execute(
-                "INSERT INTO reviews(booking_id,restaurant_id,customer_id,rating,comment,created_at) VALUES(?,?,?,?,?,?)",
-                (booking["id"], first_slot["restaurant_id"], customer["id"], 5, "Esperienza eccellente e gestione impeccabile.", datetime.utcnow().isoformat()),
-            )
-        execute(
-            "INSERT INTO subscriptions(user_id,plan_name,monthly_price,status,starts_at,expires_at) VALUES(?,?,?,?,?,?)",
-            (customer["id"], "Premium Monthly", 3.99, "active", today.isoformat(), (today + timedelta(days=30)).isoformat()),
-        )
+def image_uri(name: str) -> str:
+    path = ASSET_DIR / name
+    if not path.exists():
+        return ""
+    mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("utf-8")
 
 
 def inject_css() -> None:
+    hero = image_uri("hero_table.png")
+    chef = image_uri("chef.png")
+    candle = image_uri("candle_table.png")
     st.markdown(
-        """
+        f"""
         <style>
-        .main .block-container {padding-top:1.4rem; max-width:1280px;}
-        .hero {background:linear-gradient(135deg,#10251f,#0f7b5c); color:white; padding:28px; border-radius:24px; margin-bottom:18px;}
-        .hero h1 {margin:0; font-size:2.2rem;}
-        .hero p {font-size:1rem; opacity:.92; margin-bottom:0;}
-        .pill {display:inline-block; padding:5px 11px; border-radius:999px; background:#e8fff4; color:#0f7b5c; font-weight:800; font-size:.78rem; margin-bottom:10px;}
-        div[data-testid="stSidebar"] {background:#10251f;}
-        .stButton > button {border-radius:12px; font-weight:700;}
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        html, body, [class*="css"] {{ font-family: Inter, Arial, sans-serif; }}
+        .stApp {{ background: #ffffff; color: #202124; }}
+        header[data-testid="stHeader"] {{ background: transparent; }}
+        div[data-testid="stSidebar"] {{ background: {NAVY}; }}
+        div[data-testid="stSidebar"] * {{ color: #f7fbff !important; }}
+        div[data-testid="stSidebar"] .stButton > button {{
+            width: 100%; border-radius: 14px; border: 1px solid rgba(255,255,255,.18);
+            background: rgba(255,255,255,.06); color: white; font-weight: 700; padding: .72rem 1rem;
+        }}
+        div[data-testid="stSidebar"] .stButton > button:hover {{ background: {PRIMARY}; border-color: {PRIMARY}; }}
+        .block-container {{ max-width: 1280px; padding-top: 1.3rem; padding-bottom: 4rem; }}
+        h1, h2, h3 {{ color: {PRIMARY}; font-weight: 800; letter-spacing: -0.035em; }}
+        h1 {{ font-size: clamp(2.2rem, 5vw, 4.6rem); line-height: .98; }}
+        h2 {{ font-size: clamp(1.7rem, 3vw, 2.9rem); }}
+        .small-muted {{ color: #6b7280; font-size: .96rem; }}
+        .hero {{
+            display: grid; grid-template-columns: 42% 58%; min-height: 520px; border-radius: 28px;
+            overflow: hidden; background: #fff; box-shadow: 0 24px 80px rgba(18,30,46,.12); border: 1px solid #eef0ef;
+        }}
+        .hero-img {{ background-image: url('{hero}'); background-size: cover; background-position: center; min-height: 520px; }}
+        .hero-copy {{ padding: clamp(2rem, 6vw, 5.8rem); display: flex; flex-direction: column; justify-content: center; }}
+        .hero-title {{ color:{PRIMARY}; font-size: clamp(2.3rem, 6vw, 5rem); line-height: .98; font-weight: 800; letter-spacing: -.05em; margin-bottom: 1.6rem; }}
+        .hero-subtitle {{ font-size: 1.28rem; color:#1f2937; margin-bottom: 1.5rem; }}
+        .hero-quote {{ color:{MINT}; font-size: clamp(1.3rem, 2vw, 2rem); font-weight: 800; }}
+        .pill-row {{ display:flex; gap:.6rem; flex-wrap:wrap; margin-top:1.4rem; }}
+        .pill {{ background:#edf8f2; color:{PRIMARY}; border:1px solid #caebda; padding:.45rem .8rem; border-radius:99px; font-weight:700; font-size:.9rem; }}
+        .section {{ margin: 2.5rem 0 1.2rem; }}
+        .panel {{ border-radius: 18px; padding: 1.35rem; background:#fff; border:1px solid #e8e8e8; box-shadow:0 12px 30px rgba(18,30,46,.07); }}
+        .dark-card {{ background:{NAVY}; color:white; border-radius:14px; padding:1.5rem; min-height:145px; box-shadow: 0 8px 24px rgba(0,0,0,.10); }}
+        .dark-card h3, .dark-card h4 {{ color:white; margin:0 0 .7rem; }}
+        .green-card {{ background:{TEAL}; color:white; border-radius:14px; padding:1.5rem; min-height:145px; }}
+        .blue-card {{ background:{BLUE}; color:white; border-radius:14px; padding:1.5rem; min-height:145px; }}
+        .card-title {{ font-size:1.35rem; font-weight:800; margin-bottom:.5rem; }}
+        .kpi-grid {{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 1.2rem 0 1.4rem; }}
+        .kpi {{ background:white; border:1px solid #e9ecef; border-radius:18px; padding:1.25rem; box-shadow:0 12px 30px rgba(18,30,46,.07); position:relative; overflow:hidden; }}
+        .kpi::before {{ content:""; position:absolute; left:0; top:0; width:7px; height:100%; background:{PRIMARY}; }}
+        .kpi .label {{ color:#6b7280; font-weight:700; font-size:.88rem; text-transform:uppercase; letter-spacing:.04em; }}
+        .kpi .value {{ font-size:2.15rem; font-weight:850; color:{NAVY}; margin:.2rem 0; }}
+        .kpi .delta {{ color:{PRIMARY}; font-weight:800; font-size:.9rem; }}
+        .alert-green {{ display:flex; gap:1rem; align-items:flex-start; background:{LIGHT_GREEN}; color:#111827; border-radius:12px; padding:1.2rem 1.35rem; font-size:1.02rem; margin:1.25rem 0; }}
+        .alert-blue {{ display:flex; gap:1rem; align-items:flex-start; background:#b7d9ff; color:#0b1324; border-radius:12px; padding:1.2rem 1.35rem; font-size:1.02rem; margin:1.25rem 0; }}
+        .quote-line {{ border-left:4px solid {NAVY}; padding-left:1.4rem; margin:1.4rem 0; font-size:1.04rem; }}
+        .app-table {{ width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid #e5e7eb; background:#fff; }}
+        .app-table th {{ text-align:left; padding:1rem; font-weight:800; background:#fff; border-bottom:1px solid #e5e7eb; }}
+        .app-table td {{ padding:1rem; border-bottom:1px solid #f0f0f0; }}
+        .app-table tr:nth-child(even) td {{ background:#f5f5f5; }}
+        .app-table tr:last-child td {{ border-bottom:0; }}
+        .secret-card {{ border-radius:18px; overflow:hidden; background:#fff; border:1px solid #e6e8ec; box-shadow:0 16px 38px rgba(18,30,46,.10); height:100%; }}
+        .secret-img {{ height:170px; background-image:url('{candle}'); background-size:cover; background-position:center; }}
+        .chef-band {{ background-image: linear-gradient(90deg, rgba(29,36,56,.88), rgba(29,36,56,.18)), url('{chef}'); background-size:cover; background-position:center; border-radius:22px; min-height:260px; padding:2rem; display:flex; align-items:flex-end; color:white; }}
+        .badge {{ display:inline-block; border-radius:999px; padding:.35rem .68rem; font-size:.78rem; font-weight:800; }}
+        .badge-green {{ background:#e8f7ef; color:{PRIMARY}; }}
+        .badge-navy {{ background:{NAVY}; color:#fff; }}
+        .badge-blue {{ background:#e8f2ff; color:{BLUE}; }}
+        .timeline {{ position:relative; margin:2rem 0; }}
+        .timeline-line {{ height:2px; background:#d6d8de; position:absolute; top:50%; left:2%; right:2%; }}
+        .timeline-grid {{ display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; position:relative; }}
+        .timeline-card {{ background:{NAVY}; color:#fff; padding:1rem; border-radius:10px; min-height:135px; box-shadow:0 10px 26px rgba(29,36,56,.14); }}
+        .timeline-card:nth-child(2) {{ margin-top:6rem; background:{TEAL}; }}
+        .timeline-card:nth-child(3) {{ background:{NAVY}; }}
+        .timeline-card:nth-child(4) {{ margin-top:6rem; background:{NAVY}; }}
+        .svg-wrap {{ background:white; border:1px solid #e6e8ec; border-radius:18px; padding:1rem; box-shadow:0 12px 30px rgba(18,30,46,.07); }}
+        .stButton > button[kind="primary"] {{ background:{PRIMARY}; border-color:{PRIMARY}; border-radius:12px; font-weight:800; }}
+        .stButton > button {{ border-radius:12px; font-weight:700; }}
+        input, textarea, select {{ border-radius:10px !important; }}
+        @media(max-width: 850px) {{
+            .hero {{ grid-template-columns:1fr; }} .hero-img {{ min-height:300px; }} .hero-copy {{ padding:2rem; }}
+            .kpi-grid {{ grid-template-columns:1fr 1fr; }} .timeline-grid {{ grid-template-columns:1fr; }} .timeline-card:nth-child(n) {{ margin-top:0; }}
+        }}
+        @media(max-width: 560px) {{ .kpi-grid {{ grid-template-columns:1fr; }} }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def hero(title: str, subtitle: str) -> None:
-    st.markdown(f"<div class='hero'><span class='pill'>Secret Star Restaurant</span><h1>{title}</h1><p>{subtitle}</p></div>", unsafe_allow_html=True)
+def db() -> sqlite3.Connection:
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys = ON")
+    return con
 
 
-def authenticate(email: str, password: str) -> dict[str, Any] | None:
-    user = fetch_one("SELECT * FROM users WHERE email=? AND is_active=1", (email.lower().strip(),))
-    if user and verify_password(password, user["password_hash"]):
-        return user
-    return None
+def execute(sql: str, params: Iterable[Any] = ()) -> None:
+    with closing(db()) as con:
+        con.execute(sql, tuple(params))
+        con.commit()
 
 
-def active_subscription(user_id: int) -> bool:
-    return fetch_one("SELECT id FROM subscriptions WHERE user_id=? AND status='active' AND expires_at>=?", (user_id, date.today().isoformat())) is not None
+def fetchall(sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
+    with closing(db()) as con:
+        return con.execute(sql, tuple(params)).fetchall()
 
 
-def table(sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-    return fetch_all(sql, params)
+def fetchone(sql: str, params: Iterable[Any] = ()) -> sqlite3.Row | None:
+    with closing(db()) as con:
+        return con.execute(sql, tuple(params)).fetchone()
+
+
+def hash_password(password: str, salt: str | None = None) -> str:
+    salt = salt or os.urandom(16).hex()
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000).hex()
+    return f"{salt}${digest}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, expected = stored.split("$", 1)
+    except ValueError:
+        return False
+    calculated = hash_password(password, salt).split("$", 1)[1]
+    return hmac.compare_digest(calculated, expected)
+
+
+def init_db() -> None:
+    with closing(db()) as con:
+        con.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('admin','manager','customer')),
+                membership_status TEXT NOT NULL DEFAULT 'free',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS restaurants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                city TEXT NOT NULL,
+                area TEXT NOT NULL,
+                stars INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 3),
+                taste TEXT NOT NULL,
+                manager_id INTEGER,
+                active INTEGER NOT NULL DEFAULT 1,
+                avg_rating REAL NOT NULL DEFAULT 4.8,
+                FOREIGN KEY(manager_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS availabilities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                restaurant_id INTEGER NOT NULL,
+                service_date TEXT NOT NULL,
+                service_time TEXT NOT NULL,
+                seats INTEGER NOT NULL CHECK(seats IN (2,4)),
+                price_per_person INTEGER NOT NULL,
+                restaurant_fee INTEGER NOT NULL CHECK(restaurant_fee IN (30,50)),
+                status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','booked','expired')),
+                menu_title TEXT NOT NULL,
+                experience TEXT NOT NULL,
+                published_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
+            );
+            CREATE TABLE IF NOT EXISTS bookings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                availability_id INTEGER NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                guest_name TEXT NOT NULL,
+                guests INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled','completed')),
+                gross_value INTEGER NOT NULL,
+                platform_fee INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(availability_id) REFERENCES availabilities(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                booking_id INTEGER NOT NULL UNIQUE,
+                rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+                comment TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(booking_id) REFERENCES bookings(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_availabilities_status_date ON availabilities(status, service_date);
+            CREATE INDEX IF NOT EXISTS idx_restaurants_city_taste ON restaurants(city, taste);
+            CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings(user_id);
+            """
+        )
+        con.commit()
+
+
+def seed_db() -> None:
+    if fetchone("SELECT id FROM users LIMIT 1"):
+        return
+    users = [
+        ("Admin Secret Star", "admin@secretstar.local", "Admin123!", "admin", "premium"),
+        ("Manager Milano", "manager@secretstar.local", "Manager123!", "manager", "premium"),
+        ("Cliente Premium", "cliente@secretstar.local", "Cliente123!", "customer", "premium"),
+    ]
+    for name, email, password, role, membership in users:
+        execute(
+            "INSERT INTO users(name,email,password_hash,role,membership_status) VALUES(?,?,?,?,?)",
+            (name, email, hash_password(password), role, membership),
+        )
+    manager = fetchone("SELECT id FROM users WHERE email=?", ("manager@secretstar.local",))["id"]
+    restaurants = [
+        ("Aurum Milano", "Milano", "Brera", 2, "Contemporaneo", manager, 4.9),
+        ("Lago Segreto", "Como", "Lago", 1, "Lombardo", manager, 4.8),
+        ("Nebbia d'Oro", "Bergamo", "Città Alta", 1, "Creativo", manager, 4.7),
+        ("Franciacorta Atelier", "Brescia", "Franciacorta", 2, "Wine pairing", manager, 4.9),
+        ("Scala Verde", "Milano", "Porta Nuova", 3, "Vegetale", manager, 5.0),
+        ("Seta Notturna", "Milano", "Navigli", 1, "Fusion", manager, 4.6),
+    ]
+    for row in restaurants:
+        execute("INSERT INTO restaurants(name,city,area,stars,taste,manager_id,avg_rating) VALUES(?,?,?,?,?,?,?)", row)
+    today = date.today()
+    restaurants_ids = [r["id"] for r in fetchall("SELECT id FROM restaurants")]
+    menu_titles = ["Menu Degustazione Secret", "Percorso Signature", "Cena Stelle e Terroir", "Experience Limited Table"]
+    tastes = ["tavolo intimo, menu completo e pairing opzionale", "esperienza premium last-minute con identità riservata"]
+    for offset in range(0, 8):
+        for i, rid in enumerate(restaurants_ids):
+            seats = 2 if (i + offset) % 2 == 0 else 4
+            price = [110, 125, 135, 150][(i + offset) % 4]
+            fee = 30 if price < 135 else 50
+            status = "available"
+            execute(
+                """INSERT INTO availabilities(restaurant_id,service_date,service_time,seats,price_per_person,restaurant_fee,status,menu_title,experience)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (rid, str(today + timedelta(days=offset)), "20:30", seats, price, fee, status, menu_titles[(i + offset) % 4], tastes[(i + offset) % 2]),
+            )
+    # Create a few historical confirmed bookings for dashboard economics.
+    customer = fetchone("SELECT id FROM users WHERE email=?", ("cliente@secretstar.local",))["id"]
+    past = fetchall("SELECT id,seats,price_per_person,restaurant_fee FROM availabilities ORDER BY id LIMIT 8")
+    for a in past:
+        execute("UPDATE availabilities SET status='booked' WHERE id=?", (a["id"],))
+        execute(
+            "INSERT OR IGNORE INTO bookings(availability_id,user_id,guest_name,guests,status,gross_value,platform_fee,created_at) VALUES(?,?,?,?,?,?,?,?)",
+            (a["id"], customer, "Cliente Premium", a["seats"], "completed", a["seats"] * a["price_per_person"], a["restaurant_fee"], str(datetime.now() - timedelta(days=8 - a["id"]))),
+        )
+
+
+def current_user() -> sqlite3.Row | None:
+    uid = st.session_state.get("user_id")
+    if not uid:
+        return None
+    return fetchone("SELECT * FROM users WHERE id=?", (uid,))
 
 
 def login_page() -> None:
-    hero("Diamo nuova vita ai tavoli più esclusivi", "Marketplace premium per disponibilita last-minute nei ristoranti stellati.")
-    tab1, tab2 = st.tabs(["Login", "Registrazione cliente"])
-    with tab1:
-        with st.form("login_form"):
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-img"></div>
+            <div class="hero-copy">
+                <div class="hero-title">Secret Star Restaurant</div>
+                <div class="hero-subtitle">Una piattaforma premium per valorizzare la capacità inutilizzata dei ristoranti stellati.</div>
+                <div class="hero-quote">“Diamo nuova vita ai tavoli più esclusivi”</div>
+                <div class="pill-row">
+                    <span class="pill">Last-minute</span><span class="pill">Membership</span><span class="pill">Fine dining</span><span class="pill">Yield management</span>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.write("")
+    left, right = st.columns([1, 1], gap="large")
+    with left:
+        st.markdown("### Accesso piattaforma")
+        with st.form("login"):
             email = st.text_input("Email", value="admin@secretstar.local")
-            password = st.text_input("Password", type="password", value="Admin123!")
-            submitted = st.form_submit_button("Entra")
+            password = st.text_input("Password", value="Admin123!", type="password")
+            submitted = st.form_submit_button("Entra", type="primary", use_container_width=True)
         if submitted:
-            user = authenticate(email, password)
-            if user:
-                st.session_state.user = {"id": user["id"], "name": user["full_name"], "email": user["email"], "role": user["role"]}
-                st.success("Login effettuato")
+            user = fetchone("SELECT * FROM users WHERE email=?", (email.strip().lower(),))
+            if user and verify_password(password, user["password_hash"]):
+                st.session_state.user_id = user["id"]
+                st.session_state.page = "Dashboard"
                 st.rerun()
-            else:
-                st.error("Credenziali non valide")
-        st.info("Demo: admin@secretstar.local / Admin123! | manager@secretstar.local / Manager123! | cliente@secretstar.local / Cliente123!")
-    with tab2:
-        with st.form("register_form"):
-            full_name = st.text_input("Nome completo")
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Crea account")
-        if submitted:
-            if not full_name or not email or len(password) < 8:
-                st.error("Compila tutti i campi. La password deve avere almeno 8 caratteri.")
-            else:
-                try:
-                    create_user(full_name, email, password, "customer")
-                    st.success("Account creato. Ora puoi effettuare il login.")
-                except sqlite3.IntegrityError:
-                    st.error("Email gia registrata")
+            st.error("Credenziali non valide.")
+    with right:
+        st.markdown(
+            """
+            <div class="panel">
+                <h3>Credenziali demo</h3>
+                <table class="app-table">
+                    <tr><th>Ruolo</th><th>Email</th><th>Password</th></tr>
+                    <tr><td>Admin</td><td>admin@secretstar.local</td><td>Admin123!</td></tr>
+                    <tr><td>Manager</td><td>manager@secretstar.local</td><td>Manager123!</td></tr>
+                    <tr><td>Cliente</td><td>cliente@secretstar.local</td><td>Cliente123!</td></tr>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
-def sidebar() -> str:
-    user = st.session_state.user
-    st.sidebar.title("⭐ Secret Star")
-    st.sidebar.caption(f"{user['name']} · {user['role']}")
+def sidebar(user: sqlite3.Row) -> str:
+    st.sidebar.markdown(f"## ⭐ {APP_TITLE}")
+    st.sidebar.markdown(f"**{html.escape(user['name'])}**  \n{html.escape(user['role']).title()} · {html.escape(user['membership_status']).title()}")
+    st.sidebar.divider()
+    pages = ["Dashboard", "Marketplace", "Prenotazioni", "Ristoranti", "Business Case", "Roadmap", "Amministrazione"]
+    default = st.session_state.get("page", "Dashboard")
+    page = st.sidebar.radio("Menu", pages, index=pages.index(default) if default in pages else 0, label_visibility="collapsed")
+    st.session_state.page = page
+    st.sidebar.divider()
     if st.sidebar.button("Logout"):
         st.session_state.clear()
         st.rerun()
-    pages = ["Dashboard", "Marketplace", "Prenotazioni", "Ristoranti", "Disponibilita", "Abbonamenti", "Review"]
-    if user["role"] == "customer":
-        pages = ["Marketplace", "Prenotazioni", "Abbonamenti", "Review"]
-    return st.sidebar.radio("Menu", pages)
+    return page
+
+
+def kpi_grid(items: list[tuple[str, str, str]]) -> None:
+    html_items = "".join(
+        f"<div class='kpi'><div class='label'>{html.escape(label)}</div><div class='value'>{html.escape(value)}</div><div class='delta'>{html.escape(delta)}</div></div>"
+        for label, value, delta in items
+    )
+    st.markdown(f"<div class='kpi-grid'>{html_items}</div>", unsafe_allow_html=True)
+
+
+def table_html(headers: list[str], rows: list[list[Any]], bold_cols: set[int] | None = None) -> str:
+    bold_cols = bold_cols or set()
+    head = "".join(f"<th>{html.escape(str(h))}</th>" for h in headers)
+    body = ""
+    for row in rows:
+        cells = ""
+        for i, value in enumerate(row):
+            text = html.escape(str(value))
+            cells += f"<td>{'<b>' + text + '</b>' if i in bold_cols else text}</td>"
+        body += f"<tr>{cells}</tr>"
+    return f"<table class='app-table'><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def line_svg(values: list[int], labels: list[str], title: str) -> str:
+    width, height = 900, 360
+    pad_l, pad_r, pad_t, pad_b = 58, 30, 35, 55
+    min_v, max_v = min(values), max(values)
+    span = max(max_v - min_v, 1)
+    points = []
+    for i, v in enumerate(values):
+        x = pad_l + i * ((width - pad_l - pad_r) / (len(values) - 1))
+        y = pad_t + (max_v - v) * ((height - pad_t - pad_b) / span)
+        points.append((x, y, v))
+    polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y, _ in points)
+    area = f"{pad_l},{height-pad_b} " + polyline + f" {width-pad_r},{height-pad_b}"
+    grid = "".join(f"<line x1='{pad_l}' x2='{width-pad_r}' y1='{pad_t+i*54}' y2='{pad_t+i*54}' stroke='#e6e8ec' stroke-dasharray='4 4'/>" for i in range(6))
+    dots = "".join(
+        f"<circle cx='{x:.1f}' cy='{y:.1f}' r='5' fill='{NAVY}'/><rect x='{x-16:.1f}' y='{y-30:.1f}' width='34' height='22' rx='8' fill='#f0f1f3'/><text x='{x+1:.1f}' y='{y-15:.1f}' text-anchor='middle' font-size='12' font-weight='700' fill='#111827'>{v}</text>"
+        for x, y, v in points
+    )
+    xlabels = "".join(
+        f"<text x='{x:.1f}' y='{height-22}' text-anchor='middle' font-size='12' fill='#202124'>{html.escape(labels[i])}</text>"
+        for i, (x, _, _) in enumerate(points)
+    )
+    return f"""
+    <div class='svg-wrap'>
+    <svg viewBox='0 0 {width} {height}' width='100%' role='img' aria-label='{html.escape(title)}'>
+        <text x='{pad_l}' y='22' font-size='18' font-weight='800' fill='{PRIMARY}'>{html.escape(title)}</text>
+        {grid}
+        <polygon points='{area}' fill='#eef0f3'/>
+        <polyline points='{polyline}' fill='none' stroke='{NAVY}' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>
+        {dots}{xlabels}
+        <text x='{width-96}' y='{pad_t+8}' font-size='12' font-weight='700' fill='{NAVY}'>Ristoranti attivi</text>
+    </svg>
+    </div>
+    """
+
+
+def bar_svg(labels: list[str], values: list[int], title: str) -> str:
+    width, height = 900, 330
+    max_v = max(values) or 1
+    bars = []
+    for i, (lab, val) in enumerate(zip(labels, values)):
+        x = 75 + i * 220
+        h = int((val / max_v) * 190)
+        y = 255 - h
+        bars.append(f"<rect x='{x}' y='{y}' width='120' height='{h}' rx='12' fill='{[NAVY, TEAL, BLUE][i % 3]}'/><text x='{x+60}' y='{y-12}' text-anchor='middle' font-size='18' font-weight='800' fill='{PRIMARY}'>{val:,}</text><text x='{x+60}' y='285' text-anchor='middle' font-size='14' font-weight='700' fill='#202124'>{html.escape(lab)}</text>")
+    return f"<div class='svg-wrap'><svg viewBox='0 0 {width} {height}' width='100%'><text x='40' y='34' font-size='18' font-weight='800' fill='{PRIMARY}'>{html.escape(title)}</text>{''.join(bars)}</svg></div>"
 
 
 def dashboard_page() -> None:
-    hero("Dashboard operativa", "KPI, ricavi, andamento vendite, ordini, clienti, prodotti e incassi.")
-    restaurants = fetch_one("SELECT COUNT(*) AS n FROM restaurants")["n"]
-    users = fetch_one("SELECT COUNT(*) AS n FROM users")["n"]
-    active_slots = fetch_one("SELECT COUNT(*) AS n FROM availabilities WHERE status='available' AND service_date>=?", (date.today().isoformat(),))["n"]
-    bookings = fetch_one("SELECT COUNT(*) AS n FROM bookings")["n"]
-    revenue = fetch_one("SELECT COALESCE(SUM(platform_fee),0) AS n FROM bookings WHERE status IN ('confirmed','completed')")["n"]
-    gbv = fetch_one("SELECT COALESCE(SUM(total_amount),0) AS n FROM bookings WHERE status IN ('confirmed','completed')")["n"]
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Ristoranti", restaurants)
-    c2.metric("Utenti", users)
-    c3.metric("Slot attivi", active_slots)
-    c4.metric("Prenotazioni", bookings)
-    c5.metric("Ricavi", f"€ {revenue:,.0f}")
-    c6.metric("GBV", f"€ {gbv:,.0f}")
-    rows = fetch_all(
-        """SELECT a.service_date AS data, SUM(b.platform_fee) AS fee, SUM(b.total_amount) AS totale
-        FROM bookings b JOIN availabilities a ON a.id=b.availability_id
-        WHERE b.status IN ('confirmed','completed') GROUP BY a.service_date ORDER BY a.service_date"""
-    )
-    if rows:
-        chart = {row["data"]: {"Fee": row["fee"], "Totale": row["totale"]} for row in rows}
-        st.line_chart(chart)
-    st.subheader("Ultime prenotazioni")
-    st.dataframe(bookings_rows(), use_container_width=True, hide_index=True)
-
-
-def marketplace_rows() -> list[dict[str, Any]]:
-    return fetch_all(
-        """SELECT a.id AS ID, r.secret_alias AS 'Alias secret', r.name AS Ristorante, a.city AS Citta, a.cuisine AS Cucina,
-        a.service_date AS Data, a.service_time AS Ora, a.party_size AS Persone, a.price_per_person AS 'Prezzo persona',
-        a.restaurant_fee AS Fee, a.menu_title AS Menu, a.status AS Stato
-        FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id
-        WHERE a.status='available' AND a.service_date>=? ORDER BY a.service_date, a.service_time""",
-        (date.today().isoformat(),),
-    )
-
-
-def marketplace_page() -> None:
-    hero("Marketplace last-minute", "Scegli taste, location ed esperienza. Il ristorante resta secret fino alla conferma.")
-    user = st.session_state.user
-    has_sub = active_subscription(user["id"])
-    if not has_sub:
-        st.warning("Serve una membership attiva per prenotare. Vai in Abbonamenti per attivarla.")
-    rows = marketplace_rows()
-    if not rows:
-        st.info("Nessuna disponibilita attiva al momento.")
-        return
-    cities = ["Tutte"] + sorted({r["Citta"] for r in rows})
-    cuisines = ["Tutte"] + sorted({r["Cucina"] for r in rows})
-    col1, col2, col3 = st.columns(3)
-    city = col1.selectbox("Location", cities)
-    cuisine = col2.selectbox("Taste", cuisines)
-    party = col3.selectbox("Persone", ["Tutte", 2, 4])
-    filtered = [r for r in rows if (city == "Tutte" or r["Citta"] == city) and (cuisine == "Tutte" or r["Cucina"] == cuisine) and (party == "Tutte" or r["Persone"] == party)]
-    for row in filtered:
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([2, 1, 1])
-            c1.subheader(row["Alias secret"])
-            c1.write(f"{row['Citta']} · {row['Cucina']} · {row['Data']} alle {row['Ora']}")
-            c1.caption("Nome e indirizzo saranno rivelati dopo la prenotazione.")
-            c2.metric("Persone", int(row["Persone"]))
-            c2.metric("Prezzo/persona", f"€ {row['Prezzo persona']:.0f}")
-            c3.metric("Totale", f"€ {row['Prezzo persona'] * row['Persone']:.0f}")
-            note = st.text_input("Note allergie/preferenze", key=f"note_{row['ID']}")
-            if st.button("Prenota ora", key=f"book_{row['ID']}", disabled=not has_sub):
-                book_slot(user["id"], int(row["ID"]), note)
-                st.success("Prenotazione confermata. Ora il ristorante e visibile nella sezione Prenotazioni.")
-                st.rerun()
-
-
-def book_slot(user_id: int, availability_id: int, notes: str) -> None:
-    with closing(connect()) as conn:
-        slot = conn.execute("SELECT * FROM availabilities WHERE id=?", (availability_id,)).fetchone()
-        if not slot or slot["status"] != "available":
-            raise RuntimeError("Disponibilita non piu prenotabile")
-        code = f"SSR-{secrets.token_hex(4).upper()}"
-        conn.execute("UPDATE availabilities SET status='booked' WHERE id=?", (availability_id,))
-        conn.execute(
-            """INSERT INTO bookings(customer_id,availability_id,booking_code,party_size,total_amount,platform_fee,status,booking_date,notes)
-            VALUES(?,?,?,?,?,?,?,?,?)""",
-            (user_id, availability_id, code, slot["party_size"], slot["party_size"] * slot["price_per_person"], slot["restaurant_fee"], "confirmed", datetime.utcnow().isoformat(), notes.strip() or None),
+    bookings = fetchone("SELECT COUNT(*) c, COALESCE(SUM(gross_value),0) gbv, COALESCE(SUM(platform_fee),0) fees FROM bookings")
+    avail = fetchone("SELECT COUNT(*) c FROM availabilities WHERE status='available'")
+    rests = fetchone("SELECT COUNT(*) c FROM restaurants WHERE active=1")
+    users = fetchone("SELECT COUNT(*) c FROM users")
+    sub_revenue = users["c"] * 3.99 * 12
+    kpi_grid([
+        ("Prenotazioni", f"{bookings['c']}", "+ stesso giorno"),
+        ("GBV gestito", f"€{bookings['gbv']:,.0f}".replace(",", "."), "tavolo + menu"),
+        ("Fee piattaforma", f"€{bookings['fees']:,.0f}".replace(",", "."), "success fee"),
+        ("Tavoli disponibili", str(avail["c"]), "inventory premium"),
+    ])
+    st.markdown("## Dashboard operativa")
+    st.markdown("La piattaforma trasforma tavoli vuoti in ricavo incrementale: i ristoranti comunicano la disponibilità entro le 10:00, gli utenti premium prenotano esperienze last-minute e il nome resta riservato fino alla conferma.")
+    c1, c2 = st.columns([1.1, .9], gap="large")
+    with c1:
+        st.markdown(bar_svg(["Low", "Base", "High"], [6400, 9600, 12800], "Prenotazioni annue in Lombardia"), unsafe_allow_html=True)
+    with c2:
+        st.markdown(
+            f"""
+            <div class='dark-card'>
+                <div class='card-title'>Run-rate Lombardia</div>
+                <p>A regime, con 64 ristoranti attivi e scenario base:</p>
+                <ul><li><b>9.600</b> prenotazioni annue</li><li><b>€518k–€710k</b> ricavi piattaforma</li><li><b>€2,1M–€5,8M</b> Gross Booking Value</li></ul>
+            </div>
+            <div style='height:1rem'></div>
+            <div class='green-card'>
+                <div class='card-title'>Subscription stimata demo</div>
+                <p>Ricavi ricorrenti demo annui: <b>€{sub_revenue:,.0f}</b></p>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        conn.commit()
+    st.markdown("### Capacità inutilizzata e qualità")
+    c3, c4 = st.columns(2, gap="large")
+    with c3:
+        st.markdown("""
+        <div class='panel'>
+            <h3>Costi fissi, capacità limitata</h3>
+            <p>I ristoranti stellati operano con standard elevati e costi fissi importanti. Anche un singolo tavolo vuoto rappresenta mancato fatturato.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with c4:
+        st.markdown("""
+        <div class='panel' style='border-color:#1d7f64'>
+            <h3>Monetizzare senza perdere esclusività</h3>
+            <p>La disponibilità last-minute resta controllata e riservata: non è discount dining, è yield management applicato al fine dining.</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 
-def bookings_rows() -> list[dict[str, Any]]:
-    user = st.session_state.get("user")
-    where = ""
-    params: tuple[Any, ...] = ()
-    if user and user["role"] == "customer":
-        where = "WHERE b.customer_id=?"
-        params = (user["id"],)
-    return fetch_all(
-        f"""SELECT b.booking_code AS Codice, u.full_name AS Cliente, r.name AS Ristorante, r.address AS Indirizzo,
-        a.city AS Citta, a.service_date AS 'Data servizio', a.service_time AS Ora, b.party_size AS Persone,
-        b.total_amount AS Totale, b.platform_fee AS Fee, b.status AS Stato
+def marketplace_page(user: sqlite3.Row) -> None:
+    st.markdown("## Marketplace last-minute")
+    st.markdown("Scegli taste, location ed esperienza. Il ristorante resta **Secret** fino alla prenotazione confermata.")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        city = st.selectbox("Location", ["Tutte", "Milano", "Como", "Bergamo", "Brescia"])
+    with col2:
+        seats = st.selectbox("Persone", ["Tutte", "2", "4"])
+    with col3:
+        taste = st.text_input("Ricerca taste", "")
+    sql = """
+    SELECT a.*, r.city, r.area, r.stars, r.taste, r.avg_rating
+    FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id
+    WHERE a.status='available' AND a.service_date>=?
+    """
+    params: list[Any] = [str(date.today())]
+    if city != "Tutte":
+        sql += " AND r.city=?"
+        params.append(city)
+    if seats != "Tutte":
+        sql += " AND a.seats=?"
+        params.append(int(seats))
+    if taste.strip():
+        sql += " AND lower(r.taste) LIKE ?"
+        params.append(f"%{taste.lower()}%")
+    sql += " ORDER BY a.service_date, a.price_per_person LIMIT 24"
+    rows = fetchall(sql, params)
+    if not rows:
+        st.info("Nessun tavolo disponibile con questi filtri.")
+        return
+    cards = st.columns(3)
+    for idx, a in enumerate(rows):
+        with cards[idx % 3]:
+            st.markdown(
+                f"""
+                <div class='secret-card'>
+                    <div class='secret-img'></div>
+                    <div style='padding:1.1rem'>
+                        <span class='badge badge-navy'>Secret Restaurant #{a['restaurant_id']}</span>
+                        <span class='badge badge-green'>{a['stars']}★</span>
+                        <h3 style='font-size:1.25rem;margin:.8rem 0 .2rem'>Taste {html.escape(a['taste'])}</h3>
+                        <p class='small-muted'>{html.escape(a['city'])} · {html.escape(a['area'])} · {a['service_date']} · {a['service_time']}</p>
+                        <p>{html.escape(a['menu_title'])}<br><b>€{a['price_per_person']} pp</b> · {a['seats']} persone · rating {a['avg_rating']}</p>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Prenota tavolo", key=f"book_{a['id']}", type="primary", use_container_width=True):
+                if user["membership_status"] != "premium":
+                    st.error("Serve una membership premium attiva per prenotare.")
+                else:
+                    gross = a["seats"] * a["price_per_person"]
+                    try:
+                        execute("UPDATE availabilities SET status='booked' WHERE id=? AND status='available'", (a["id"],))
+                        execute(
+                            "INSERT INTO bookings(availability_id,user_id,guest_name,guests,gross_value,platform_fee) VALUES(?,?,?,?,?,?)",
+                            (a["id"], user["id"], user["name"], a["seats"], gross, a["restaurant_fee"]),
+                        )
+                        st.success("Prenotazione confermata. Ora il ristorante è visibile nella sezione Prenotazioni.")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.warning("Questo tavolo è stato appena prenotato da un altro utente.")
+
+
+def bookings_page(user: sqlite3.Row) -> None:
+    st.markdown("## Prenotazioni")
+    if user["role"] == "customer":
+        params: list[Any] = [user["id"]]
+        where = "WHERE b.user_id=?"
+    else:
+        params = []
+        where = ""
+    rows = fetchall(
+        f"""
+        SELECT b.*, a.service_date, a.service_time, a.price_per_person, r.name restaurant, r.city, r.area, r.stars
         FROM bookings b
-        JOIN users u ON u.id=b.customer_id
         JOIN availabilities a ON a.id=b.availability_id
         JOIN restaurants r ON r.id=a.restaurant_id
         {where}
-        ORDER BY b.booking_date DESC""",
+        ORDER BY b.created_at DESC
+        """,
         params,
     )
-
-
-def bookings_page() -> None:
-    hero("Prenotazioni", "Gestione delle prenotazioni confermate, completate e cancellate.")
-    rows = bookings_rows()
-    query = st.text_input("Cerca")
-    if query:
-        rows = [r for r in rows if query.lower() in " ".join(str(v).lower() for v in r.values())]
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-
-
-def restaurants_page() -> None:
-    hero("Ristoranti partner", "Anagrafica ristoranti stellati, aree pilota e rating qualita.")
-    if st.session_state.user["role"] not in {"admin", "restaurant"}:
-        st.error("Permesso insufficiente")
+    if not rows:
+        st.info("Non ci sono prenotazioni.")
         return
-    rows = fetch_all("SELECT id AS ID, name AS Nome, secret_alias AS 'Alias secret', city AS Citta, area AS Area, cuisine AS Cucina, michelin_stars AS Stelle, is_active AS Attivo FROM restaurants ORDER BY city, name")
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    with st.expander("Aggiungi ristorante"):
-        with st.form("restaurant_form"):
-            name = st.text_input("Nome reale")
-            alias = st.text_input("Alias secret")
-            city = st.text_input("Citta", value="Milano")
-            area = st.text_input("Area", value="Brera")
-            cuisine = st.text_input("Cucina", value="Contemporanea")
-            stars = st.number_input("Stelle Michelin", 1, 3, 1)
-            address = st.text_input("Indirizzo")
-            description = st.text_area("Descrizione")
-            submitted = st.form_submit_button("Salva")
-        if submitted:
-            code = f"SSR-{city[:2].upper()}-{secrets.token_hex(2).upper()}"
-            manager = fetch_one("SELECT id FROM users WHERE role='restaurant' LIMIT 1")
-            execute(
-                """INSERT INTO restaurants(manager_id,public_code,name,secret_alias,city,area,cuisine,michelin_stars,address,description,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                ((manager or {}).get("id"), code, name, alias, city, area, cuisine, int(stars), address, description, datetime.utcnow().isoformat()),
-            )
-            st.success("Ristorante creato")
-            st.rerun()
-
-
-def availability_page() -> None:
-    hero("Disponibilita entro le 10:00", "Pubblicazione controllata dei tavoli last-minute monetizzabili.")
-    if st.session_state.user["role"] not in {"admin", "restaurant"}:
-        st.error("Permesso insufficiente")
-        return
-    rows = fetch_all(
-        """SELECT a.id AS ID, r.name AS Ristorante, r.secret_alias AS 'Alias secret', a.city AS Citta, a.cuisine AS Cucina,
-        a.service_date AS Data, a.service_time AS Ora, a.party_size AS Persone, a.price_per_person AS 'Prezzo persona',
-        a.restaurant_fee AS Fee, a.menu_title AS Menu, a.status AS Stato
-        FROM availabilities a JOIN restaurants r ON r.id=a.restaurant_id ORDER BY a.service_date DESC, a.service_time"""
-    )
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    restaurants = fetch_all("SELECT id, name, city FROM restaurants WHERE is_active=1 ORDER BY name")
-    with st.expander("Pubblica nuova disponibilita"):
-        with st.form("availability_form"):
-            labels = {f"{r['name']} · {r['city']}": r["id"] for r in restaurants}
-            selected = st.selectbox("Ristorante", list(labels.keys())) if labels else None
-            service_date = st.date_input("Data servizio", value=date.today())
-            service_time = st.text_input("Ora", value="20:30")
-            party_size = st.selectbox("Persone", [2, 4])
-            price = st.number_input("Prezzo per persona", min_value=50.0, value=120.0, step=10.0)
-            fee = st.selectbox("Fee ristorante", [30.0, 50.0])
-            menu_title = st.text_input("Titolo menu", value="Percorso Secret Star")
-            menu_description = st.text_area("Descrizione menu", value="Menu degustazione premium con tavolo secret.")
-            submitted = st.form_submit_button("Pubblica")
-        if submitted and selected:
-            r = fetch_one("SELECT * FROM restaurants WHERE id=?", (labels[selected],))
-            try:
-                execute(
-                    """INSERT INTO availabilities(restaurant_id,service_date,service_time,city,cuisine,party_size,price_per_person,restaurant_fee,menu_title,menu_description,status,published_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r["id"], service_date.isoformat(), service_time, r["city"], r["cuisine"], int(party_size), float(price), float(fee), menu_title, menu_description, "available", datetime.utcnow().isoformat()),
-                )
-                st.success("Disponibilita pubblicata")
-                st.rerun()
-            except sqlite3.IntegrityError:
-                st.error("Esiste gia uno slot per questo ristorante alla stessa data e ora.")
-
-
-def subscriptions_page() -> None:
-    hero("Membership", "€3,99 al mese oppure piano annuale da €50 per accedere alle disponibilita selezionate.")
-    user = st.session_state.user
-    if active_subscription(user["id"]):
-        st.success("Membership attiva")
-    else:
-        st.warning("Membership non attiva")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Premium Monthly")
-        st.metric("Prezzo", "€3,99/mese")
-        if st.button("Attiva monthly"):
-            execute("INSERT INTO subscriptions(user_id,plan_name,monthly_price,status,starts_at,expires_at) VALUES(?,?,?,?,?,?)", (user["id"], "Premium Monthly", 3.99, "active", date.today().isoformat(), (date.today() + timedelta(days=30)).isoformat()))
-            st.success("Membership monthly attivata")
-            st.rerun()
-    with col2:
-        st.subheader("Premium Annual")
-        st.metric("Prezzo", "€50/anno")
-        if st.button("Attiva annual"):
-            execute("INSERT INTO subscriptions(user_id,plan_name,monthly_price,status,starts_at,expires_at) VALUES(?,?,?,?,?,?)", (user["id"], "Premium Annual", 50.0 / 12, "active", date.today().isoformat(), (date.today() + timedelta(days=365)).isoformat()))
-            st.success("Membership annuale attivata")
-            st.rerun()
-
-
-def reviews_page() -> None:
-    hero("Review e qualita", "Feedback per preservare posizionamento premium e qualita della clientela.")
-    rows = fetch_all(
-        """SELECT r.name AS Ristorante, u.full_name AS Cliente, v.rating AS Rating, v.comment AS Commento, v.created_at AS Data
-        FROM reviews v JOIN restaurants r ON r.id=v.restaurant_id JOIN users u ON u.id=v.customer_id ORDER BY v.created_at DESC"""
-    )
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    completed = fetch_all(
-        """SELECT b.id, b.booking_code, r.name FROM bookings b
-        JOIN availabilities a ON a.id=b.availability_id JOIN restaurants r ON r.id=a.restaurant_id
-        LEFT JOIN reviews v ON v.booking_id=b.id
-        WHERE b.customer_id=? AND b.status='completed' AND v.id IS NULL""",
-        (st.session_state.user["id"],),
-    )
+    rows_html = [[r["id"], r["restaurant"], f"{r['city']} · {r['area']}", f"{r['service_date']} {r['service_time']}", r["guests"], f"€{r['gross_value']}", r["status"]] for r in rows]
+    st.markdown(table_html(["ID", "Ristorante", "Location", "Servizio", "Pax", "GBV", "Stato"], rows_html, {1, 5}), unsafe_allow_html=True)
+    st.markdown("### Lascia una review")
+    completed = [r for r in rows if r["status"] in ("confirmed", "completed")]
     if completed:
-        with st.expander("Lascia una review"):
-            labels = {f"{b['booking_code']} · {b['name']}": b["id"] for b in completed}
-            with st.form("review_form"):
-                selected = st.selectbox("Prenotazione", list(labels.keys()))
-                rating = st.slider("Rating", 1, 5, 5)
-                comment = st.text_area("Commento")
-                submitted = st.form_submit_button("Invia review")
-            if submitted:
-                b = fetch_one("SELECT a.restaurant_id FROM bookings b JOIN availabilities a ON a.id=b.availability_id WHERE b.id=?", (labels[selected],))
-                execute("INSERT INTO reviews(booking_id,restaurant_id,customer_id,rating,comment,created_at) VALUES(?,?,?,?,?,?)", (labels[selected], b["restaurant_id"], st.session_state.user["id"], int(rating), comment, datetime.utcnow().isoformat()))
-                st.success("Review inviata")
+        bid = st.selectbox("Prenotazione", [int(r["id"]) for r in completed])
+        rating = st.slider("Rating", 1, 5, 5)
+        comment = st.text_area("Commento", "Esperienza premium, servizio eccellente e ottima gestione last-minute.")
+        if st.button("Salva review", type="primary"):
+            try:
+                execute("INSERT OR REPLACE INTO reviews(booking_id,rating,comment) VALUES(?,?,?)", (bid, rating, comment.strip()))
+                st.success("Review salvata.")
+            except sqlite3.Error as exc:
+                st.error(f"Errore: {exc}")
+
+
+def restaurants_page(user: sqlite3.Row) -> None:
+    st.markdown("## Ristoranti stellati")
+    st.markdown("Il network parte da Milano e cresce fino alla Lombardia premium: Lago di Como, Bergamo, Brescia e Franciacorta.")
+    if user["role"] in ("admin", "manager"):
+        with st.expander("Aggiungi ristorante"):
+            with st.form("new_restaurant"):
+                name = st.text_input("Nome ristorante")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    city = st.text_input("Città", "Milano")
+                with c2:
+                    area = st.text_input("Area", "Brera")
+                with c3:
+                    stars = st.selectbox("Stelle", [1, 2, 3])
+                taste = st.text_input("Taste", "Contemporaneo")
+                if st.form_submit_button("Crea", type="primary") and name.strip():
+                    execute("INSERT INTO restaurants(name,city,area,stars,taste,manager_id,avg_rating) VALUES(?,?,?,?,?,?,?)", (name.strip(), city.strip(), area.strip(), stars, taste.strip(), user["id"], 4.8))
+                    st.success("Ristorante creato.")
+                    st.rerun()
+    rows = fetchall("SELECT * FROM restaurants ORDER BY city, stars DESC")
+    table = [[r["name"], r["city"], r["area"], f"{r['stars']}★", r["taste"], r["avg_rating"], "Attivo" if r["active"] else "Non attivo"] for r in rows]
+    st.markdown(table_html(["Nome", "Città", "Area", "Stelle", "Taste", "Rating", "Stato"], table, {0, 3}), unsafe_allow_html=True)
+    st.markdown("### Pubblica disponibilità entro le 10:00")
+    if user["role"] in ("admin", "manager"):
+        restaurants = fetchall("SELECT id,name FROM restaurants WHERE active=1 ORDER BY name")
+        with st.form("new_availability"):
+            rid = st.selectbox("Ristorante", restaurants, format_func=lambda r: r["name"])
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                service_date = st.date_input("Data", date.today())
+            with c2:
+                service_time = st.text_input("Ora", "20:30")
+            with c3:
+                seats = st.selectbox("Pax", [2, 4])
+            with c4:
+                price = st.number_input("Prezzo pp", 90, 300, 125)
+            fee = st.selectbox("Fee ristorante", [30, 50])
+            menu = st.text_input("Menu", "Menu Degustazione Secret")
+            exp = st.text_area("Esperienza", "Pacchetto tavolo + menu a prezzo competitivo.")
+            if st.form_submit_button("Pubblica tavolo", type="primary"):
+                execute(
+                    "INSERT INTO availabilities(restaurant_id,service_date,service_time,seats,price_per_person,restaurant_fee,menu_title,experience) VALUES(?,?,?,?,?,?,?,?)",
+                    (rid["id"], str(service_date), service_time, seats, int(price), int(fee), menu, exp),
+                )
+                st.success("Disponibilità pubblicata.")
                 st.rerun()
+    else:
+        st.info("Solo manager e admin possono pubblicare tavoli.")
+
+
+def business_case_page() -> None:
+    st.markdown("## Business case e modello ricavi")
+    st.markdown("Il modello combina subscription utente e success fee dal ristorante, con monetizzazione della capacità inutilizzata e mantenimento del posizionamento premium.")
+    c1, c2 = st.columns([1.2, .8], gap="large")
+    with c1:
+        st.markdown(table_html(["Variabile", "Ipotesi"], [
+            ["Ristoranti nel pilot", "64"], ["Tavoli disponibili per ristorante", "1 al giorno"], ["Settimane operative", "50 all'anno"],
+            ["Giorni vendibili a settimana", "2 / 3 / 4"], ["Persone per tavolo", "2 o 4"], ["Prezzo per persona", "negoziato con Ristorante"],
+            ["Fee trattenuta al ristorante", "€30 o €50 per tavolo"], ["Subscription utente", "€3,99 al mese"],
+        ], {0}), unsafe_allow_html=True)
+    with c2:
+        st.markdown("""
+        <div class='dark-card'><div class='card-title'>Scenario Low</div><p>2 giorni a settimana</p></div><br>
+        <div class='green-card'><div class='card-title'>Scenario Base</div><p>3 giorni a settimana</p></div><br>
+        <div class='blue-card'><div class='card-title'>Scenario High</div><p>4 giorni a settimana</p></div>
+        """, unsafe_allow_html=True)
+    st.markdown("### Ricavi annui potenziali — Lombardia")
+    st.markdown(table_html(["Scenario", "Fee €30 + subscription", "Fee €50 + subscription"], [
+        ["Low", "€345.216", "€473.216"], ["Base", "€517.824", "€709.824"], ["High", "€690.432", "€946.432"],
+    ], {0, 1, 2}), unsafe_allow_html=True)
+    st.markdown("<div class='alert-green'>✓ <span>Il pilot lombardo può avvicinarsi a <b>€1M di ricavi annui</b> prima dello scale-up nazionale.</span></div>", unsafe_allow_html=True)
+    st.markdown("### Upside Italia")
+    st.markdown("<h1 style='text-align:center;color:#5bbda5'>394 × 3 × 50 = 59.100<br>prenotazioni/anno</h1>", unsafe_allow_html=True)
+    c3, c4 = st.columns(2, gap="large")
+    with c3:
+        st.markdown(table_html(["Volumi e GBV — Italia", "Scenario base"], [["Prenotazioni annue", "59.100"], ["GTV minimo (2 pax × €110)", "€13,0M"], ["GTV massimo (4 pax × €150)", "€35,5M"]], {1}), unsafe_allow_html=True)
+    with c4:
+        st.markdown(table_html(["Voce", "Fee €30", "Fee €50"], [["Ricavi da fee ristorante", "€1,77M", "€2,96M"], ["Ricavi da subscription", "€1,42M", "€1,42M"], ["Totale ricavi", "€3,19M", "€4,37M"]], {0,1,2}), unsafe_allow_html=True)
+
+
+def roadmap_page() -> None:
+    st.markdown("## Implementazione graduale: da Milano alla Lombardia in 12 mesi")
+    st.markdown("La piattaforma parte da Milano con 5 ristoranti selezionati e cresce con incremento medio del 26% mensile fino a circa 64 ristoranti attivi in Lombardia entro 12 mesi.")
+    st.markdown("""
+    <div class='timeline'>
+        <div class='timeline-line'></div>
+        <div class='timeline-grid'>
+            <div class='timeline-card'><b>Mesi 1-3: Milano pilot</b><ul><li>5 ristoranti stellati selezionati</li><li>Onboarding e primi utenti premium</li><li>Validazione processo operativo</li></ul></div>
+            <div class='timeline-card'><b>Mesi 4-6: Milano estesa</b><ul><li>Espansione network milanese</li><li>Attivazione domanda qualificata</li><li>Test pricing e conversione</li></ul></div>
+            <div class='timeline-card'><b>Mesi 7-9: Lombardia premium</b><ul><li>Lago di Como, Bergamo, Brescia</li><li>Posizionamento esclusivo</li><li>Crescita liquidità marketplace</li></ul></div>
+            <div class='timeline-card'><b>Mesi 10-12: Target Lombardia</b><ul><li>~64 ristoranti attivi</li><li>Preparazione scale-up Nord Italia</li></ul></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    values = [5, 6, 8, 10, 13, 16, 20, 25, 32, 40, 51, 64]
+    labels = [f"Mese {i}" for i in range(1, 13)]
+    st.markdown(line_svg(values, labels, "Crescita ristoranti attivi"), unsafe_allow_html=True)
+    st.markdown("### Ricavi anno 1 con implementazione graduale")
+    st.markdown(table_html(["Scenario", "Prenotazioni anno 1", "Ricavi fee €30", "Ricavi fee €50", "Ricavi subscription", "Totali €30", "Totali €50"], [
+        ["Low, 2 giorni/settimana", "~2.406", "€72k", "€120k", "€58k", "€130k", "€178k"],
+        ["Base, 3 giorni/settimana", "~3.609", "€108k", "€180k", "€86k", "€195k", "€267k"],
+        ["High, 4 giorni/settimana", "~4.812", "€144k", "€241k", "€115k", "€260k", "€356k"],
+    ], {0}), unsafe_allow_html=True)
+    st.markdown("<div class='alert-green'>✓ <span>A regime, con 64 ristoranti attivi in Lombardia, lo scenario base genera <b>9.600 prenotazioni annue</b>, <b>€2,1M–€5,8M</b> di GBV e <b>€518k–€710k</b> di ricavi annui piattaforma.</span></div>", unsafe_allow_html=True)
+
+
+def admin_page(user: sqlite3.Row) -> None:
+    st.markdown("## Amministrazione")
+    if user["role"] != "admin":
+        st.warning("Pagina disponibile solo per admin.")
+        return
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if st.button("Reset database demo", use_container_width=True):
+            if DB_PATH.exists():
+                DB_PATH.unlink()
+            init_db(); seed_db(); st.success("Database ricreato."); st.rerun()
+    with c2:
+        if st.button("Attiva membership a tutti", use_container_width=True):
+            execute("UPDATE users SET membership_status='premium'")
+            st.success("Membership aggiornate.")
+    with c3:
+        if st.button("Scadenza tavoli passati", use_container_width=True):
+            execute("UPDATE availabilities SET status='expired' WHERE service_date<? AND status='available'", (str(date.today()),))
+            st.success("Tavoli aggiornati.")
+    users = fetchall("SELECT id,name,email,role,membership_status,created_at FROM users ORDER BY id")
+    st.markdown("### Utenti")
+    st.markdown(table_html(["ID", "Nome", "Email", "Ruolo", "Membership", "Creato"], [[u["id"], u["name"], u["email"], u["role"], u["membership_status"], u["created_at"]] for u in users], {1,3}), unsafe_allow_html=True)
+
+
+def final_story() -> None:
+    st.markdown("## Da tavoli vuoti a marketplace premium del fine dining")
+    st.markdown("""
+    <div class='chef-band'>
+        <div>
+            <h2 style='color:white'>Una nuova infrastruttura digitale per monetizzare l'invenduto premium</h2>
+            <p style='font-size:1.15rem;max-width:720px'>Dal pilot lombardo al Nord Italia, fino all'espansione nazionale e alle città europee: Parigi, Londra, Barcellona, Zurigo.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def main() -> None:
     init_db()
-    seed_demo_data()
+    seed_db()
     inject_css()
-    if "user" not in st.session_state:
+    user = current_user()
+    if not user:
         login_page()
         return
-    page = sidebar()
+    page = sidebar(user)
     if page == "Dashboard":
         dashboard_page()
     elif page == "Marketplace":
-        marketplace_page()
+        marketplace_page(user)
     elif page == "Prenotazioni":
-        bookings_page()
+        bookings_page(user)
     elif page == "Ristoranti":
-        restaurants_page()
-    elif page == "Disponibilita":
-        availability_page()
-    elif page == "Abbonamenti":
-        subscriptions_page()
-    elif page == "Review":
-        reviews_page()
+        restaurants_page(user)
+    elif page == "Business Case":
+        business_case_page()
+    elif page == "Roadmap":
+        roadmap_page()
+    elif page == "Amministrazione":
+        admin_page(user)
+    final_story()
 
 
 if __name__ == "__main__":
