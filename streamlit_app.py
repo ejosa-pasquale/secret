@@ -27,7 +27,7 @@ INK = "#050608"
 CARD = "#101522"
 CARD_2 = "#151b2a"
 
-st.set_page_config(page_title=APP_TITLE, page_icon="⭐", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title=APP_TITLE, page_icon="⭐", layout="wide", initial_sidebar_state="collapsed")
 
 
 def image_uri(name: str) -> str:
@@ -132,7 +132,10 @@ def inject_css() -> None:
         .block-container {{ max-width: 1400px; padding-top: 1rem; padding-left: clamp(1rem,3vw,3rem); padding-right: clamp(1rem,3vw,3rem); }}
         h1, h2, h3 {{ color: #f7f5ef; }}
         .stMarkdown p, .stCaption, label, .small-muted {{ color: rgba(247,245,239,.76) !important; }}
-        div[data-testid="stSidebar"] {{ background: linear-gradient(180deg, #050608 0%, #0e1420 100%); border-right: 1px solid rgba(216,180,95,.18); }}
+        div[data-testid="stSidebar"] {{ background: linear-gradient(180deg, #050608 0%, #0e1420 100%) !important; border-right: 1px solid rgba(216,180,95,.18); }}
+        div[data-testid="stSidebar"] * {{ color: #f7f5ef !important; -webkit-text-fill-color: #f7f5ef !important; }}
+        div[data-testid="stSidebar"] .stButton > button {{ background: rgba(216,180,95,.16) !important; color:#fff4cf !important; -webkit-text-fill-color:#fff4cf !important; border:1px solid rgba(216,180,95,.38) !important; }}
+        div[data-testid="stSidebar"] .stButton > button:hover {{ background: rgba(36,165,106,.32) !important; border-color: rgba(119,217,189,.46) !important; }}
         div[data-testid="stSidebar"] .stRadio label {{ border-radius: 14px; padding: .45rem .6rem; }}
         .hero {{ background: #080a0f; border: 1px solid rgba(216,180,95,.25); box-shadow: 0 36px 100px rgba(0,0,0,.55); grid-template-columns: minmax(420px, 48%) 1fr; }}
         .hero-img {{ min-height: 600px; background-position: center; filter: saturate(.95) contrast(1.05); }}
@@ -169,7 +172,10 @@ def inject_css() -> None:
         .badge-blue {{ background: rgba(11,79,145,.35); color:#c7defc; border:1px solid rgba(133,183,255,.20); }}
         .chef-band {{ border: 1px solid rgba(216,180,95,.20); box-shadow: 0 26px 60px rgba(0,0,0,.40); }}
         .stTextInput input, .stTextArea textarea, .stNumberInput input, .stDateInput input {{ background: rgba(255,255,255,.06) !important; color:#f7f5ef !important; border: 1px solid rgba(216,180,95,.20) !important; }}
-        .stSelectbox div[data-baseweb="select"] > div {{ background: rgba(255,255,255,.06) !important; color:#f7f5ef !important; border-color: rgba(216,180,95,.20) !important; }}
+        .stSelectbox div[data-baseweb="select"] > div {{ background: #ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; border-color: rgba(216,180,95,.45) !important; }}
+        .stSelectbox div[data-baseweb="select"] span, .stSelectbox div[data-baseweb="select"] input, .stSelectbox div[data-baseweb="select"] [role="button"] {{ color:#000000 !important; -webkit-text-fill-color:#000000 !important; }}
+        div[data-baseweb="popover"], div[data-baseweb="popover"] * {{ background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; }}
+        ul[role="listbox"], ul[role="listbox"] li, ul[role="listbox"] div {{ background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; }}
         .stButton > button[kind="primary"] {{ background: linear-gradient(135deg, {PRIMARY}, #0b6a48); border-color: rgba(119,217,189,.35); color:white; }}
         .stButton > button {{ background: rgba(216,180,95,.08); color:#fff4cf; border:1px solid rgba(216,180,95,.25); }}
 
@@ -559,19 +565,11 @@ def login_page() -> None:
     )
 
 def sidebar(user: sqlite3.Row) -> str:
+    """Sidebar ridotta: niente box/menu di modalità, perché la navigazione avviene dai box principali."""
     st.sidebar.markdown(f"## ⭐ {APP_TITLE}")
     st.sidebar.markdown(f"**{html.escape(user['name'])}**  \n{html.escape(user['role']).title()} · {html.escape(user['membership_status']).title()}")
     st.sidebar.divider()
-    pages = ["Dashboard", "Marketplace", "Prenotazioni", "Ristoranti", "Business Case", "Roadmap", "Amministrazione"]
-    page = st.session_state.get("page", "Dashboard")
-    st.sidebar.markdown("**Modalità di visualizzazione**")
-    for option in pages:
-        marker = "●" if option == page else "○"
-        if st.sidebar.button(f"{marker} {option}", key=f"nav_{option}", use_container_width=True):
-            st.session_state.page = option
-            st.rerun()
-    st.sidebar.divider()
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("Logout", use_container_width=True):
         st.session_state.clear()
         st.rerun()
     return st.session_state.get("page", "Dashboard")
