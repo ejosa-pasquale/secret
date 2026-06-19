@@ -178,6 +178,17 @@ def inject_css() -> None:
         ul[role="listbox"], ul[role="listbox"] li, ul[role="listbox"] div {{ background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; }}
         .stButton > button[kind="primary"] {{ background: linear-gradient(135deg, {PRIMARY}, #0b6a48); border-color: rgba(119,217,189,.35); color:white; }}
         .stButton > button {{ background: rgba(216,180,95,.08); color:#fff4cf; border:1px solid rgba(216,180,95,.25); }}
+        /* Readability fixes for light popovers, menus and form fields */
+        section[data-testid="stSidebar"], div[data-testid="stSidebar"] { background: linear-gradient(180deg, #050608 0%, #0e1420 100%) !important; }
+        section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * { color:#f7f5ef !important; -webkit-text-fill-color:#f7f5ef !important; opacity:1 !important; }
+        .stTextInput input, .stTextArea textarea, .stNumberInput input, .stDateInput input,
+        input, textarea { background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; caret-color:#000000 !important; border-color:rgba(216,180,95,.45) !important; }
+        .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div { background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; }
+        .stSelectbox div[data-baseweb="select"] *, .stMultiSelect div[data-baseweb="select"] * { color:#000000 !important; -webkit-text-fill-color:#000000 !important; }
+        div[data-baseweb="popover"], div[data-baseweb="popover"] *, ul[role="listbox"], ul[role="listbox"] *, [role="option"], [role="option"] * { background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; }
+        div[data-testid="stSidebar"] .stButton > button { background: rgba(216,180,95,.16) !important; color:#fff4cf !important; -webkit-text-fill-color:#fff4cf !important; border:1px solid rgba(216,180,95,.38) !important; }
+        .stButton > button { min-height:3.2rem; color:#fff4cf !important; -webkit-text-fill-color:#fff4cf !important; }
+        
 
         .mode-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; margin:1.25rem 0 1.5rem; }}
         .mode-card {{ background:linear-gradient(180deg, rgba(21,27,42,.96), rgba(8,10,15,.96)); border:1px solid rgba(216,180,95,.22); border-radius:18px; padding:1rem; min-height:118px; box-shadow:0 18px 46px rgba(0,0,0,.35); }}
@@ -532,15 +543,12 @@ def login_page() -> None:
     st.markdown("### Accesso piattaforma")
     email = st.text_input("Email", value="admin@secretstar.local")
     st.markdown("### Modalità di visualizzazione")
-    cards = "".join(
-        f"<div class='mode-card'><div class='mode-emoji'>{emoji}</div><h4>{html.escape(page)}</h4><p>{html.escape(desc)}</p></div>"
-        for page, emoji, desc in pages
-    )
-    st.markdown(f"<div class='mode-grid'>{cards}</div>", unsafe_allow_html=True)
+    st.caption("Seleziona una sezione: i box qui sotto sono gli unici comandi di navigazione nella schermata iniziale.")
 
     cols = st.columns(4)
-    for i, (page, emoji, _desc) in enumerate(pages):
+    for i, (page, emoji, desc) in enumerate(pages):
         with cols[i % 4]:
+            st.markdown(f"<div class='small-muted'>{html.escape(desc)}</div>", unsafe_allow_html=True)
             if st.button(f"{emoji} {page}", key=f"enter_{page}", use_container_width=True):
                 user = fetchone("SELECT * FROM users WHERE email=?", (email.strip().lower(),))
                 if user:
@@ -573,6 +581,28 @@ def sidebar(user: sqlite3.Row) -> str:
         st.session_state.clear()
         st.rerun()
     return st.session_state.get("page", "Dashboard")
+
+def top_navigation() -> None:
+    """Navigazione principale nel corpo pagina: niente menu laterali o menu a tendina."""
+    pages = [
+        ("Dashboard", "📊"),
+        ("Marketplace", "🍽️"),
+        ("Prenotazioni", "📅"),
+        ("Ristoranti", "⭐"),
+        ("Business Case", "📈"),
+        ("Roadmap", "🗺️"),
+        ("Amministrazione", "⚙️"),
+    ]
+    cols = st.columns(4)
+    current = st.session_state.get("page", "Dashboard")
+    for i, (page, emoji) in enumerate(pages):
+        with cols[i % 4]:
+            label = f"{emoji} {page}" if page != current else f"● {emoji} {page}"
+            if st.button(label, key=f"nav_{page}", use_container_width=True):
+                st.session_state.page = page
+                st.rerun()
+    st.divider()
+
 
 def kpi_grid(items: list[tuple[str, str, str]]) -> None:
     html_items = "".join(
@@ -1220,6 +1250,8 @@ def main() -> None:
         login_page()
         return
     page = sidebar(user)
+    top_navigation()
+    page = st.session_state.get("page", page)
     if page == "Dashboard":
         dashboard_page()
     elif page == "Marketplace":
