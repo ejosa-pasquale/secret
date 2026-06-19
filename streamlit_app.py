@@ -172,6 +172,14 @@ def inject_css() -> None:
         .stSelectbox div[data-baseweb="select"] > div {{ background: rgba(255,255,255,.06) !important; color:#f7f5ef !important; border-color: rgba(216,180,95,.20) !important; }}
         .stButton > button[kind="primary"] {{ background: linear-gradient(135deg, {PRIMARY}, #0b6a48); border-color: rgba(119,217,189,.35); color:white; }}
         .stButton > button {{ background: rgba(216,180,95,.08); color:#fff4cf; border:1px solid rgba(216,180,95,.25); }}
+
+        .mode-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; margin:1.25rem 0 1.5rem; }}
+        .mode-card {{ background:linear-gradient(180deg, rgba(21,27,42,.96), rgba(8,10,15,.96)); border:1px solid rgba(216,180,95,.22); border-radius:18px; padding:1rem; min-height:118px; box-shadow:0 18px 46px rgba(0,0,0,.35); }}
+        .mode-card h4 {{ margin:0 0 .4rem; color:#fff4cf; font-size:1.03rem; }}
+        .mode-card p {{ margin:0; color:rgba(247,245,239,.72); font-size:.9rem; line-height:1.35; }}
+        .mode-emoji {{ font-size:1.5rem; margin-bottom:.45rem; }}
+        @media(max-width: 900px) {{ .mode-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+        @media(max-width: 560px) {{ .mode-grid {{ grid-template-columns:1fr; }} }}
         .mobile-only {{ display:none; }}
         @media(max-width: 900px) {{
             .hero {{ grid-template-columns:1fr; border-radius: 22px; }}
@@ -489,6 +497,15 @@ def current_user() -> sqlite3.Row | None:
 
 
 def login_page() -> None:
+    pages = [
+        ("Dashboard", "📊", "KPI, ricavi e andamento operativo."),
+        ("Marketplace", "🍽️", "Esperienze disponibili e prenotazione tavoli."),
+        ("Prenotazioni", "📅", "Gestione prenotazioni e stati."),
+        ("Ristoranti", "⭐", "Anagrafica ristoranti e disponibilità."),
+        ("Business Case", "📈", "Simulator, scenari e unit economics."),
+        ("Roadmap", "🗺️", "Piano di crescita e milestone."),
+        ("Amministrazione", "⚙️", "Operazioni admin e manutenzione dati."),
+    ]
     st.markdown(
         """
         <div class="hero">
@@ -506,51 +523,58 @@ def login_page() -> None:
         unsafe_allow_html=True,
     )
     st.write("")
-    left, right = st.columns([1, 1], gap="large")
-    with left:
-        st.markdown("### Accesso piattaforma")
-        with st.form("login"):
-            email = st.text_input("Email", value="admin@secretstar.local")
-            password = st.text_input("Password", value="Admin123!", type="password")
-            submitted = st.form_submit_button("Entra", type="primary", use_container_width=True)
-        if submitted:
-            user = fetchone("SELECT * FROM users WHERE email=?", (email.strip().lower(),))
-            if user and verify_password(password, user["password_hash"]):
-                st.session_state.user_id = user["id"]
-                st.session_state.page = "Dashboard"
-                st.rerun()
-            st.error("Credenziali non valide.")
-    with right:
-        st.markdown(
-            """
-            <div class="panel">
-                <h3>Credenziali demo</h3>
-                <table class="app-table">
-                    <tr><th>Ruolo</th><th>Email</th><th>Password</th></tr>
-                    <tr><td>Admin</td><td>admin@secretstar.local</td><td>Admin123!</td></tr>
-                    <tr><td>Manager</td><td>manager@secretstar.local</td><td>Manager123!</td></tr>
-                    <tr><td>Cliente</td><td>cliente@secretstar.local</td><td>Cliente123!</td></tr>
-                </table>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    st.markdown("### Accesso piattaforma")
+    email = st.text_input("Email", value="admin@secretstar.local")
+    st.markdown("### Modalità di visualizzazione")
+    cards = "".join(
+        f"<div class='mode-card'><div class='mode-emoji'>{emoji}</div><h4>{html.escape(page)}</h4><p>{html.escape(desc)}</p></div>"
+        for page, emoji, desc in pages
+    )
+    st.markdown(f"<div class='mode-grid'>{cards}</div>", unsafe_allow_html=True)
 
+    cols = st.columns(4)
+    for i, (page, emoji, _desc) in enumerate(pages):
+        with cols[i % 4]:
+            if st.button(f"{emoji} {page}", key=f"enter_{page}", use_container_width=True):
+                user = fetchone("SELECT * FROM users WHERE email=?", (email.strip().lower(),))
+                if user:
+                    st.session_state.user_id = user["id"]
+                    st.session_state.page = page
+                    st.rerun()
+                st.error("Email non valida.")
+
+    st.markdown(
+        """
+        <div class="panel">
+            <h3>Profili demo</h3>
+            <table class="app-table">
+                <tr><th>Ruolo</th><th>Email</th></tr>
+                <tr><td>Admin</td><td>admin@secretstar.local</td></tr>
+                <tr><td>Manager</td><td>manager@secretstar.local</td></tr>
+                <tr><td>Cliente</td><td>cliente@secretstar.local</td></tr>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def sidebar(user: sqlite3.Row) -> str:
     st.sidebar.markdown(f"## ⭐ {APP_TITLE}")
     st.sidebar.markdown(f"**{html.escape(user['name'])}**  \n{html.escape(user['role']).title()} · {html.escape(user['membership_status']).title()}")
     st.sidebar.divider()
     pages = ["Dashboard", "Marketplace", "Prenotazioni", "Ristoranti", "Business Case", "Roadmap", "Amministrazione"]
-    default = st.session_state.get("page", "Dashboard")
-    page = st.sidebar.radio("Menu", pages, index=pages.index(default) if default in pages else 0, label_visibility="collapsed")
-    st.session_state.page = page
+    page = st.session_state.get("page", "Dashboard")
+    st.sidebar.markdown("**Modalità di visualizzazione**")
+    for option in pages:
+        marker = "●" if option == page else "○"
+        if st.sidebar.button(f"{marker} {option}", key=f"nav_{option}", use_container_width=True):
+            st.session_state.page = option
+            st.rerun()
     st.sidebar.divider()
     if st.sidebar.button("Logout"):
         st.session_state.clear()
         st.rerun()
-    return page
-
+    return st.session_state.get("page", "Dashboard")
 
 def kpi_grid(items: list[tuple[str, str, str]]) -> None:
     html_items = "".join(
@@ -704,8 +728,8 @@ def marketplace_page(user: sqlite3.Row) -> None:
         <div class='market-hero'>
             <div class='market-content'>
                 <div class='market-eyebrow'>SECRET TABLES · SAME-DAY · FINE DINING</div>
-                <div class='market-title'>Unlock tonight’s most exclusive table</div>
-                <div class='market-sub'>Fine Dining. Secret Venue. Starred Experience. One click to unlock.</div>
+                <div class='market-title'>Tonight’s most exclusive tables, quietly unlocked.</div>
+                <div class='market-sub'>Esperienze stellate disponibili oggi. Accesso riservato, conferma immediata, ristorante secret fino al primo click.</div>
                 <div class='market-line'>Hai 60 secondi per trasformare una disponibilità rara nel tuo tavolo di stasera.</div>
                 <div class='market-quick'>
                     <div class='quick-card'><b>{total_available}</b><span>Tavoli premium disponibili</span></div>
@@ -814,7 +838,7 @@ def marketplace_page(user: sqlite3.Row) -> None:
             if user["role"] == "customer":
                 st.caption(f"Totale esperienza: {eur(gross)}")
             else:
-                st.caption(f"Fee piattaforma: €{a['restaurant_fee']} · Totale tavolo: {eur(gross)}")
+                st.caption(f"Totale tavolo: {eur(gross)}")
         with b3:
             if pending_for_this:
                 remaining = max(0, int(float(pending["expires_at"]) - datetime.utcnow().timestamp()))
@@ -991,6 +1015,14 @@ def restaurants_page(user: sqlite3.Row) -> None:
 
 
 def business_case_page() -> None:
+    st.markdown("""
+        <style>
+        .stNumberInput input, .stTextInput input, .stTextArea textarea, .stDateInput input { background:#ffffff !important; color:#000000 !important; -webkit-text-fill-color:#000000 !important; }
+        .stNumberInput input::placeholder, .stTextInput input::placeholder, .stTextArea textarea::placeholder { color:#444444 !important; opacity:1 !important; }
+        div[data-baseweb="select"] * { color:#000000 !important; }
+        div[data-testid="stExpander"] label, div[data-testid="stExpander"] p { color:#000000 !important; }
+        </style>
+    """, unsafe_allow_html=True)
     st.markdown("## Business case interattivo")
     st.markdown("Modifica le leve operative e verifica in tempo reale prenotazioni, GBV, ricavi da fee, ricavi subscription e potenziale di scala. Il modello riprende la logica subscription + success fee del business case originale.")
 
